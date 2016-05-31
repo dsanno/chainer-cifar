@@ -1,5 +1,6 @@
 import numpy as np
 import six
+from scipy.misc import imresize, imrotate
 
 from chainer import functions as F
 from chainer import cuda
@@ -65,7 +66,35 @@ class CifarTrainer(object):
         return loss, acc
 
     def __trans_image(self, x):
-        return x[:,:,2:30,2:30]
+        size = 24
+        n = x.shape[0]
+        images = np.zeros((n, 3, size, size), dtype=np.float32)
+        mirror = np.random.randint(2, size=n)
+        scale = np.random.randint(3, size=n)
+        rotate = np.random.randint(-2, 3, size=n)
+        offset = np.random.randint(5, size=(n, 2))
+        shift = np.random.uniform(-20, 20, n).astype(np.float32).reshape((n, 1, 1, 1))
+        contrast = np.random.uniform(0.8, 1.2, n).astype(np.float32).reshape((n, 1, 1, 1))
+        for i in six.moves.range(n):
+            s = scale[i]
+            top, left = offset[i]
+            top *= s + 1
+            left *= s + 1
+            image = x[i].transpose((1, 2, 0))
+            if s == 0:
+                image = imresize(image, (28, 28))
+            elif s == 2:
+                image = imresize(image, (36, 36))
+            if rotate[i] != 0:
+                image = imrotate(image, rotate[i] * 4)
+            image = image.transpose((2, 0, 1))
+            if mirror[i] > 0:
+                images[i,:,:,::-1] = image[:,top:top + size,left:left + size]
+            else:
+                images[i,:,:,:] = image[:,top:top + size,left:left + size]
+        return images * contrast + shift
 
     def __crop_image(self, x):
-        return x[:,:,2:30,2:30]
+        size = 24
+        offset = (32 - size) // 2
+        return x[:,:,offset:offset + size,offset:offset + size]
