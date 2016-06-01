@@ -63,6 +63,8 @@ class ResidualBlock(chainer.Chain):
         if self.activation1 is not None:
             h = self.activation1(h)
         h = self.bn2(self.conv2(h), test=not train)
+        if not train:
+            h = h * (1 - self.skip_ratio)
         if self.swapout:
             h = F.dropout(h, train=train) + F.dropout(x, train=train)
         else:
