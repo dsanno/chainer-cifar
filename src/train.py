@@ -2,6 +2,7 @@ import argparse
 import cPickle as pickle
 import numpy as np
 import os
+import matplotlib.pyplot as plt
 import chainer
 from chainer import optimizers
 from chainer import serializers
@@ -47,6 +48,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     np.random.seed(args.seed)
+    log_file_path = '{}_log.csv'.format(args.prefix)
+
     print('loading dataset...')
     with open(args.dataset, 'rb') as f:
         images = pickle.load(f)
@@ -93,7 +96,35 @@ if __name__ == '__main__':
             serializers.save_npz('{}_{}.state'.format(model_prefix, epoch + 1), o)
         if (epoch + 1) % args.lr_decay_iter == 0:
             if hasattr(optimizer, 'alpha'):
-                optimizer.alpha *= 0.1
+                o.alpha *= 0.1
             else:
-                optimizer.lr *= 0.1
+                o.lr *= 0.1
+        with open(log_file_path, 'a') as f:
+            f.write('{},{},{},{},{}\n'.format(epoch + 1, loss, acc, test_loss, test_acc))
+
+    with open(log_file_path, 'w') as f:
+        f.write('epoch,train loss,train acc,test loss,test acc\n')
     cifar_trainer.fit(train_x, train_y, test_x, test_y, on_epoch_done)
+
+    train_loss, train_acc, test_loss, test_acc = np.loadtxt(log_file_path, delimiter=',', skiprows=1, usecols=[1, 2, 3, 4], unpack=True)
+    epoch = len(train_loss)
+    xs = np.arange(epoch, dtype=np.int32) + 1
+    plt.clf()
+    fig, ax = plt.subplots()
+    ax.plot(xs, train_loss, label='train loss', c='blue')
+    ax.plot(xs, test_loss, label='test loss', c='red')
+    ax.set_xlim((1, epoch))
+    ax.set_xlabel('epoch')
+    ax.set_ylabel('loss')
+    ax.legend(bbox_to_anchor=(0.75, 0.9), loc=9)
+    plt.savefig('{}_loss.png'.format(args.prefix), bbox_inches='tight')
+
+    plt.clf()
+    fig, ax = plt.subplots()
+    ax.plot(xs, train_acc, label='train accuracy', c='blue')
+    ax.plot(xs, test_acc, label='test accuracy', c='red')
+    ax.set_xlim([1, epoch])
+    ax.set_xlabel('epoch')
+    ax.set_ylabel('accuracy')
+    ax.legend(bbox_to_anchor=(0.75, 0.3), loc=9)
+    plt.savefig('{}_acc'.format(args.prefix), bbox_inches='tight')

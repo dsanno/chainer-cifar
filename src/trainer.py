@@ -47,7 +47,7 @@ class CifarTrainer(object):
             test_acc = 0
             if test_x is not None and test_y is not None:
                 for i in six.moves.range(0, len(test_x), self.batch_size):
-                    x_batch = self.__crop_image(test_x[i:i + batch_size])
+                    x_batch = test_x[i:i + batch_size]
                     loss, acc = self.__forward(x_batch, test_y[i:i + batch_size], train=False)
                     test_loss += float(loss.data) * len(x_batch)
                     test_acc += float(acc.data) * len(x_batch)
