@@ -14,7 +14,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='CIFAR-10 dataset trainer')
     parser.add_argument('--gpu', '-g', type=int, default=-1,
                         help='GPU device ID (negative value indicates CPU)')
-    parser.add_argument('--model', '-m', type=str, default='vgg', choices=['cnn', 'cnn_batch', 'cnin', 'vgg', 'residual', 'identity_mapping'],
+    parser.add_argument('--model', '-m', type=str, default='vgg', choices=['cnn', 'cnn_batch', 'vgg', 'residual', 'identity_mapping'],
                         help='Model name')
     parser.add_argument('--batch_size', '-b', type=int, default=100,
                         help='Mini batch size')
@@ -42,7 +42,7 @@ if __name__ == '__main__':
                         help='Depth of Residual Net')
     parser.add_argument('--swapout', action='store_true',
                         help='Use swapout')
-    parser.add_argument('--seed', type=int, default=1319,
+    parser.add_argument('--seed', type=int, default=1,
                         help='Random seed')
     args = parser.parse_args()
 

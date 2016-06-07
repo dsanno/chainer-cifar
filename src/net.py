@@ -117,7 +117,7 @@ class CNN(chainer.Chain):
             conv2=L.Convolution2D(64, 64, 5, stride=1, pad=2),
             conv3=L.Convolution2D(64, 128, 5, stride=1,
             pad=2),
-            l1=L.Linear(3 * 3 * 128, 1000),
+            l1=L.Linear(4 * 4 * 128, 1000),
             l2=L.Linear(1000, 10),
         )
 
@@ -134,7 +134,7 @@ class CNNWithBatch(chainer.Chain):
             bconv1=BatchConv2D(3, 64, 5, stride=1, pad=2),
             bconv2=BatchConv2D(64, 64, 5, stride=1, pad=2),
             bconv3=BatchConv2D(64, 128, 5, stride=1, pad=2),
-            l1=L.Linear(3 * 3 * 128, 1000),
+            l1=L.Linear(4 * 4 * 128, 1000),
             l2=L.Linear(1000, 10),
         )
 
@@ -144,28 +144,6 @@ class CNNWithBatch(chainer.Chain):
         h3 = F.max_pooling_2d(self.bconv3(h2, train), 3, 2)
         h4 = F.relu(self.l1(F.dropout(h3, train=train)))
         return self.l2(F.dropout(h4, train=train))
-
-class CNIN(chainer.Chain):
-    def __init__(self):
-        super(CNIN, self).__init__(
-            bconv1_1=BatchConv2D(3, 100, 3, stride=1, pad=1),
-            bconv1_2=BatchConv2D(100, 100, 1, stride=1, pad=0),
-            bconv2_1=BatchConv2D(100, 200, 2, stride=1, pad=0),
-            bconv2_2=BatchConv2D(200, 200, 1, stride=1, pad=0),
-            bconv3_1=BatchConv2D(200, 300, 2, stride=1, pad=0),
-            bconv3_2=BatchConv2D(300, 300, 1, stride=1, pad=0),
-            bconv4_1=BatchConv2D(300, 400, 2, stride=1, pad=0),
-            bconv4_2=BatchConv2D(400, 10, 1, stride=1, pad=0),
-        )
-
-    def __call__(self, x, train=True):
-        h = x
-        for i in six.moves.range(1, 5):
-            h = self['bconv{}_1'.format(i)](h, train)
-#            h = F.dropout(h, train=train)
-            h = F.max_pooling_2d(h, 2)
-            h = self['bconv{}_2'.format(i)](h, train)
-        return F.reshape(h, h.data.shape[:2])
 
 class VGG(chainer.Chain):
     def __init__(self):
@@ -178,7 +156,7 @@ class VGG(chainer.Chain):
             bconv3_2=BatchConv2D(256, 256, 3, stride=1, pad=1),
             bconv3_3=BatchConv2D(256, 256, 3, stride=1, pad=1),
             bconv3_4=BatchConv2D(256, 256, 3, stride=1, pad=1),
-            fc4=L.Linear(3 * 3 * 256, 1024),
+            fc4=L.Linear(4 * 4 * 256, 1024),
             fc5=L.Linear(1024, 1024),
             fc6=L.Linear(1024, 10),
         )
@@ -204,27 +182,28 @@ class ResidualNet(chainer.Chain):
     def __init__(self, depth=18, swapout=False, skip=True):
         super(ResidualNet, self).__init__()
         links = [('bconv1', BatchConv2D(3, 16, 3, 1, 1), True)]
+        skip_size = depth * 3 - 3
         for i in six.moves.range(depth):
             if skip:
-                skip_ratio = float(i) / (depth - 1) * 0.5
+                skip_ratio = float(i) / skip_size * 0.5
             else:
                 skip_ratio = 0
             links.append(('res{}'.format(len(links)), ResidualBlock(16, 16, swapout=swapout, skip_ratio=skip_ratio, ), True))
         links.append(('res{}'.format(len(links)), ResidualBlock(16, 32, stride=2, swapout=swapout), True))
         for i in six.moves.range(depth - 1):
             if skip:
-                skip_ratio = float(i + 1) / (depth - 1) * 0.5
+                skip_ratio = float(i + depth) / skip_size * 0.5
             else:
                 skip_ratio = 0
             links.append(('res{}'.format(len(links)), ResidualBlock(32, 32, swapout=swapout, skip_ratio=skip_ratio), True))
         links.append(('res{}'.format(len(links)), ResidualBlock(32, 64, stride=2, swapout=swapout), True))
         for i in six.moves.range(depth - 1):
             if skip:
-                skip_ratio = float(i + 1) / (depth - 1) * 0.5
+                skip_ratio = float(i + depth * 2 - 1) / skip_size * 0.5
             else:
                 skip_ratio = 0
             links.append(('res{}'.format(len(links)), ResidualBlock(64, 64, swapout=swapout, skip_ratio=skip_ratio), True))
-        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(6, 1, 0, False, True), False))
+        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False, True), False))
         links.append(('fc{}'.format(len(links)), L.Linear(64, 10), False))
 
         for name, f, _with_train in links:
@@ -253,7 +232,7 @@ class IdentityMapping(chainer.Chain):
         links.append(('res{}'.format(len(links)), IdentityMappingBlock(32, 64, stride=2, swapout=swapout, activation1=F.elu, activation2=F.elu), True))
         for i in six.moves.range(depth - 1):
             links.append(('res{}'.format(len(links)), IdentityMappingBlock(64, 64, swapout=swapout, activation1=F.elu, activation2=F.elu), True))
-        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(6, 1, 0, False, True), False))
+        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False, True), False))
         links.append(('fc{}'.format(len(links)), L.Linear(64, 10), False))
 
         for name, f, _with_train in links:

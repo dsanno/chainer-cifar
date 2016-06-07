@@ -35,7 +35,7 @@ class CifarTrainer(object):
             for i in six.moves.range(0, len(x), self.batch_size):
                 self.net.zerograds()
                 batch_index = perm[i:i + batch_size]
-                x_batch = self.__trans_image(x[batch_index])
+                x_batch = x[batch_index]
                 loss, acc = self.__forward(x_batch, y[batch_index])
                 loss.backward()
                 self.optimizer.update()
@@ -66,35 +66,20 @@ class CifarTrainer(object):
         return loss, acc
 
     def __trans_image(self, x):
-        size = 24
+        size = 32
         n = x.shape[0]
         images = np.zeros((n, 3, size, size), dtype=np.float32)
+        offset = np.random.randint(-4, 5, size=(n, 2))
         mirror = np.random.randint(2, size=n)
-        scale = np.random.randint(3, size=n)
-        rotate = np.random.randint(-2, 3, size=n)
-        offset = np.random.randint(5, size=(n, 2))
-        shift = np.random.uniform(-20, 20, n).astype(np.float32).reshape((n, 1, 1, 1))
-        contrast = np.random.uniform(0.8, 1.2, n).astype(np.float32).reshape((n, 1, 1, 1))
         for i in six.moves.range(n):
-            s = scale[i]
+            image = x[i]
             top, left = offset[i]
-            top *= s + 1
-            left *= s + 1
-            image = x[i].transpose((1, 2, 0))
-            if s == 0:
-                image = imresize(image, (28, 28))
-            elif s == 2:
-                image = imresize(image, (36, 36))
-            if rotate[i] != 0:
-                image = imrotate(image, rotate[i] * 4)
-            image = image.transpose((2, 0, 1))
+            left = max(0, left)
+            top = max(0, top)
+            right = min(size, left + size)
+            bottom = min(size, left + size)
             if mirror[i] > 0:
-                images[i,:,:,::-1] = image[:,top:top + size,left:left + size]
+                images[i,:,size-bottom:size-top,size-right:size-left] = image[:,top:bottom, left:right][:,:,::-1]
             else:
-                images[i,:,:,:] = image[:,top:top + size,left:left + size]
-        return images * contrast + shift
-
-    def __crop_image(self, x):
-        size = 24
-        offset = (32 - size) // 2
-        return x[:,:,offset:offset + size,offset:offset + size]
+                images[i,:,size-bottom:size-top,size-right:size-left] = image[:,top:bottom,left:right]
+        return images
