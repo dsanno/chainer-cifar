@@ -88,9 +88,11 @@ if __name__ == '__main__':
         model_prefix = args.prefix
 
     def on_epoch_done(epoch, n, o, loss, acc, test_loss, test_acc):
+        error = 100 * (1 - acc)
+        test_error = 100 * (1 - test_acc)
         print('epoch {} done'.format(epoch))
-        print('train loss: {} acc: {}'.format(loss, acc))
-        print('test  loss: {} acc: {}'.format(test_loss, test_acc))
+        print('train loss: {} error: {}'.format(loss, error))
+        print('test  loss: {} error: {}'.format(test_loss, test_error))
         if (epoch + 1) % args.save_iter == 0:
             serializers.save_npz('{}_{}.model'.format(model_prefix, epoch + 1), n)
             serializers.save_npz('{}_{}.state'.format(model_prefix, epoch + 1), o)
@@ -100,7 +102,7 @@ if __name__ == '__main__':
             else:
                 o.lr *= 0.1
         with open(log_file_path, 'a') as f:
-            f.write('{},{},{},{},{}\n'.format(epoch + 1, loss, acc, test_loss, test_acc))
+            f.write('{},{},{},{},{}\n'.format(epoch + 1, loss, error, test_loss, test_error))
 
     with open(log_file_path, 'w') as f:
         f.write('epoch,train loss,train acc,test loss,test acc\n')
@@ -116,15 +118,15 @@ if __name__ == '__main__':
     ax.set_xlim((1, epoch))
     ax.set_xlabel('epoch')
     ax.set_ylabel('loss')
-    ax.legend(bbox_to_anchor=(0.75, 0.9), loc=9)
+    ax.legend(loc='upper right')
     plt.savefig('{}_loss.png'.format(args.prefix), bbox_inches='tight')
 
     plt.clf()
     fig, ax = plt.subplots()
-    ax.plot(xs, train_acc, label='train accuracy', c='blue')
-    ax.plot(xs, test_acc, label='test accuracy', c='red')
+    ax.plot(xs, train_acc, label='train error', c='blue')
+    ax.plot(xs, test_acc, label='test error', c='red')
     ax.set_xlim([1, epoch])
     ax.set_xlabel('epoch')
-    ax.set_ylabel('accuracy')
-    ax.legend(bbox_to_anchor=(0.75, 0.3), loc=9)
-    plt.savefig('{}_acc'.format(args.prefix), bbox_inches='tight')
+    ax.set_ylabel('error')
+    ax.legend(loc='upper right')
+    plt.savefig('{}_error'.format(args.prefix), bbox_inches='tight')
