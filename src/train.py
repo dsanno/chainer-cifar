@@ -15,7 +15,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='CIFAR-10 dataset trainer')
     parser.add_argument('--gpu', '-g', type=int, default=-1,
                         help='GPU device ID (negative value indicates CPU)')
-    parser.add_argument('--model', '-m', type=str, default='vgg', choices=['cnn', 'cnn_batch', 'vgg', 'residual', 'identity_mapping'],
+    parser.add_argument('--model', '-m', type=str, default='vgg', choices=['cnn', 'cnnbn', 'vgg', 'residual', 'identity_mapping'],
                         help='Model name')
     parser.add_argument('--batch_size', '-b', type=int, default=100,
                         help='Mini batch size')
@@ -27,8 +27,8 @@ if __name__ == '__main__':
                         help='Prefix of model parameter files')
     parser.add_argument('--iter', type=int, default=300,
                         help='Training iteration')
-    parser.add_argument('--save_iter', type=int, default=20,
-                        help='Iteration interval to save model parameter file')
+    parser.add_argument('--save_iter', type=int, default=0,
+                        help='Iteration interval to save model parameter file.')
     parser.add_argument('--lr_decay_iter', type=int, default=100,
                         help='Iteration interval to decay learning rate')
     parser.add_argument('--weight_decay', type=float, default=0.0001,
@@ -53,20 +53,23 @@ if __name__ == '__main__':
     print('loading dataset...')
     with open(args.dataset, 'rb') as f:
         images = pickle.load(f)
-        train_x = images['train'].reshape((-1, 3, 32, 32))
+        index = np.random.permutation(len(images['train']))
+        train_index = index[:-5000]
+        valid_index = index[-5000:]
+        train_x = images['train'][train_index].reshape((-1, 3, 32, 32))
+        valid_x = images['train'][valid_index].reshape((-1, 3, 32, 32))
         test_x = images['test'].reshape((-1, 3, 32, 32))
     with open(args.label, 'rb') as f:
         labels = pickle.load(f)
-        train_y = labels['train']
+        train_y = labels['train'][train_index]
+        valid_y = labels['train'][valid_index]
         test_y = labels['test']
 
     print('start training')
     if args.model == 'cnn':
         cifar_net = net.CNN()
-    elif args.model == 'cnn_batch':
-        cifar_net = net.CNNWithBatch()
-    elif args.model == 'cnin':
-        cifar_net = net.CNIN()
+    elif args.model == 'cnnbn':
+        cifar_net = net.CNNBN()
     elif args.model == 'residual':
         cifar_net = net.ResidualNet(args.res_depth, swapout=args.swapout)
     elif args.model == 'identity_mapping':
@@ -80,6 +83,7 @@ if __name__ == '__main__':
         optimizer = optimizers.Adam(alpha=args.alpha)
     optimizer.setup(cifar_net)
     if args.weight_decay > 0:
+#        optimizer.add_hook(chainer.optimizer.GradientClipping(10.0))
         optimizer.add_hook(chainer.optimizer.WeightDecay(args.weight_decay))
     cifar_trainer = trainer.CifarTrainer(cifar_net, optimizer, args.iter, args.batch_size, args.gpu)
     if args.prefix is None:
@@ -87,13 +91,21 @@ if __name__ == '__main__':
     else:
         model_prefix = args.prefix
 
-    def on_epoch_done(epoch, n, o, loss, acc, test_loss, test_acc):
+    state = {'best_valid_error': 100, 'best_test_error': 100}
+    def on_epoch_done(epoch, n, o, loss, acc, valid_loss, valid_acc, test_loss, test_acc):
         error = 100 * (1 - acc)
+        valid_error = 100 * (1 - valid_acc)
         test_error = 100 * (1 - test_acc)
         print('epoch {} done'.format(epoch))
         print('train loss: {} error: {}'.format(loss, error))
+        print('valid loss: {} error: {}'.format(valid_loss, valid_error))
         print('test  loss: {} error: {}'.format(test_loss, test_error))
-        if (epoch + 1) % args.save_iter == 0:
+        if valid_error < state['best_valid_error']:
+            serializers.save_npz('{}.model'.format(model_prefix), n)
+            serializers.save_npz('{}.state'.format(model_prefix), o)
+            state['best_valid_error'] = valid_error
+            state['best_test_error'] = test_error
+        if args.save_iter > 0 and (epoch + 1) % args.save_iter == 0:
             serializers.save_npz('{}_{}.model'.format(model_prefix, epoch + 1), n)
             serializers.save_npz('{}_{}.state'.format(model_prefix, epoch + 1), o)
         if (epoch + 1) % args.lr_decay_iter == 0:
@@ -106,7 +118,9 @@ if __name__ == '__main__':
 
     with open(log_file_path, 'w') as f:
         f.write('epoch,train loss,train acc,test loss,test acc\n')
-    cifar_trainer.fit(train_x, train_y, test_x, test_y, on_epoch_done)
+    cifar_trainer.fit(train_x, train_y, valid_x, valid_y, test_x, test_y, on_epoch_done)
+
+    print('best test error: {}'.format(state['best_test_error']))
 
     train_loss, train_acc, test_loss, test_acc = np.loadtxt(log_file_path, delimiter=',', skiprows=1, usecols=[1, 2, 3, 4], unpack=True)
     epoch = len(train_loss)

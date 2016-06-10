@@ -128,9 +128,9 @@ class CNN(chainer.Chain):
         h4 = F.relu(self.l1(F.dropout(h3, train=train)))
         return self.l2(F.dropout(h4, train=train))
 
-class CNNWithBatch(chainer.Chain):
+class CNNBN(chainer.Chain):
     def __init__(self):
-        super(CNNWithBatch, self).__init__(
+        super(CNNBN, self).__init__(
             bconv1=BatchConv2D(3, 64, 5, stride=1, pad=2),
             bconv2=BatchConv2D(64, 64, 5, stride=1, pad=2),
             bconv3=BatchConv2D(64, 128, 5, stride=1, pad=2),
@@ -225,13 +225,13 @@ class IdentityMapping(chainer.Chain):
         super(IdentityMapping, self).__init__()
         links = [('bconv1', BatchConv2D(3, 16, 3, 1, 1), True)]
         for i in six.moves.range(depth):
-            links.append(('res{}'.format(len(links)), IdentityMappingBlock(16, 16, swapout=swapout, activation1=F.elu, activation2=F.elu), True))
-        links.append(('res{}'.format(len(links)), IdentityMappingBlock(16, 32, stride=2, swapout=swapout, activation1=F.elu, activation2=F.elu), True))
+            links.append(('res{}'.format(len(links)), IdentityMappingBlock(16, 16, swapout=swapout, activation1=F.relu, activation2=F.relu), True))
+        links.append(('res{}'.format(len(links)), IdentityMappingBlock(16, 32, stride=2, swapout=swapout, activation1=F.relu, activation2=F.relu), True))
         for i in six.moves.range(depth - 1):
-            links.append(('res{}'.format(len(links)), IdentityMappingBlock(32, 32, swapout=swapout, activation1=F.elu, activation2=F.elu), True))
-        links.append(('res{}'.format(len(links)), IdentityMappingBlock(32, 64, stride=2, swapout=swapout, activation1=F.elu, activation2=F.elu), True))
+            links.append(('res{}'.format(len(links)), IdentityMappingBlock(32, 32, swapout=swapout, activation1=F.relu, activation2=F.relu), True))
+        links.append(('res{}'.format(len(links)), IdentityMappingBlock(32, 64, stride=2, swapout=swapout, activation1=F.relu, activation2=F.relu), True))
         for i in six.moves.range(depth - 1):
-            links.append(('res{}'.format(len(links)), IdentityMappingBlock(64, 64, swapout=swapout, activation1=F.elu, activation2=F.elu), True))
+            links.append(('res{}'.format(len(links)), IdentityMappingBlock(64, 64, swapout=swapout, activation1=F.relu, activation2=F.relu), True))
         links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False, True), False))
         links.append(('fc{}'.format(len(links)), L.Linear(64, 10), False))
 

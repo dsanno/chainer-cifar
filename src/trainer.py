@@ -19,14 +19,14 @@ class CifarTrainer(object):
         else:
             self.xp = np
 
-    def fit(self, x, y, test_x=None, test_y=None, callback=None):
+    def fit(self, x, y, valid_x, valid_y, test_x=None, test_y=None, callback=None):
         if self.device_id >= 0:
             with cuda.cupy.cuda.Device(self.device_id):
-                return self.__fit(x, y, test_x, test_y, callback)
+                return self.__fit(x, y, valid_x, valid_y, test_x, test_y, callback)
         else:
-            return self.__fit(x, y, test_x, test_y, callback)
+            return self.__fit(x, y, valid_x, valid_y, test_x, test_y, callback)
 
-    def __fit(self, x, y, test_x, test_y, callback):
+    def __fit(self, x, y, valid_x, valid_y, test_x, test_y, callback):
         batch_size = self.batch_size
         for epoch in six.moves.range(self.epoch_num):
             perm = np.random.permutation(len(x))
@@ -35,7 +35,7 @@ class CifarTrainer(object):
             for i in six.moves.range(0, len(x), self.batch_size):
                 self.net.zerograds()
                 batch_index = perm[i:i + batch_size]
-                x_batch = x[batch_index]
+                x_batch = self.__trans_image(x[batch_index])
                 loss, acc = self.__forward(x_batch, y[batch_index])
                 loss.backward()
                 self.optimizer.update()
@@ -43,6 +43,16 @@ class CifarTrainer(object):
                 train_acc += float(acc.data) * len(x_batch)
             train_loss /= len(x)
             train_acc /= len(x)
+            valid_loss = 0
+            valid_acc = 0
+            if valid_x is not None and valid_y is not None:
+                for i in six.moves.range(0, len(valid_x), self.batch_size):
+                    x_batch = valid_x[i:i + batch_size]
+                    loss, acc = self.__forward(x_batch, valid_y[i:i + batch_size], train=False)
+                    valid_loss += float(loss.data) * len(x_batch)
+                    valid_acc += float(acc.data) * len(x_batch)
+            valid_loss /= len(valid_x)
+            valid_acc /= len(valid_x)
             test_loss = 0
             test_acc = 0
             if test_x is not None and test_y is not None:
@@ -54,7 +64,7 @@ class CifarTrainer(object):
                 test_loss /= len(test_x)
                 test_acc /= len(test_x)
             if callback is not None:
-                callback(epoch, self.net, self.optimizer, train_loss, train_acc, test_loss, test_acc)
+                callback(epoch, self.net, self.optimizer, train_loss, train_acc, valid_loss, valid_acc, test_loss, test_acc)
 
     def __forward(self, batch_x, batch_t, train=True):
         xp = self.xp
