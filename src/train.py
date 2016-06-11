@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import chainer
 from chainer import optimizers
 from chainer import serializers
-import cifar
 import net
 import trainer
 
