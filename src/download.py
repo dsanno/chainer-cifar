@@ -8,6 +8,8 @@ save_dir = 'dataset'
 tar_path = os.path.join(save_dir, file_name)
 
 if __name__ == '__main__':
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
     if os.path.exists(tar_path):
         print('{:s} already downloaded.'.format(file_name))
     else:
