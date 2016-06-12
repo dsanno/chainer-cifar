@@ -84,7 +84,6 @@ if __name__ == '__main__':
         optimizer = optimizers.Adam(alpha=args.alpha)
     optimizer.setup(cifar_net)
     if args.weight_decay > 0:
-#        optimizer.add_hook(chainer.optimizer.GradientClipping(10.0))
         optimizer.add_hook(chainer.optimizer.WeightDecay(args.weight_decay))
     cifar_trainer = trainer.CifarTrainer(cifar_net, optimizer, args.iter, args.batch_size, args.gpu)
     if args.prefix is None:
