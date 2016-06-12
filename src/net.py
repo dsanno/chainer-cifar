@@ -179,7 +179,7 @@ class VGG(chainer.Chain):
         return h
 
 class ResidualNet(chainer.Chain):
-    def __init__(self, depth=18, swapout=False, skip=True):
+    def __init__(self, depth=18, swapout=False, skip=False):
         super(ResidualNet, self).__init__()
         links = [('bconv1', BatchConv2D(3, 16, 3, 1, 1), True)]
         skip_size = depth * 3 - 3

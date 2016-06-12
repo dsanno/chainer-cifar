@@ -39,7 +39,9 @@ if __name__ == '__main__':
     parser.add_argument('--alpha', type=float, default=0.001,
                         help='Initial alpha for Adam')
     parser.add_argument('--res_depth', type=int, default=18,
-                        help='Depth of Residual Net')
+                        help='Depth of Residual Network')
+    parser.add_argument('--skip_depth', action='store_true',
+                        help='Use stochastic depth in Residual Network')
     parser.add_argument('--swapout', action='store_true',
                         help='Use swapout')
     parser.add_argument('--seed', type=int, default=1,
@@ -70,7 +72,7 @@ if __name__ == '__main__':
     elif args.model == 'cnnbn':
         cifar_net = net.CNNBN()
     elif args.model == 'residual':
-        cifar_net = net.ResidualNet(args.res_depth, swapout=args.swapout)
+        cifar_net = net.ResidualNet(args.res_depth, swapout=args.swapout, skip=args.skip_depth)
     elif args.model == 'identity_mapping':
         cifar_net = net.IdentityMapping(args.res_depth, swapout=args.swapout)
     else:
