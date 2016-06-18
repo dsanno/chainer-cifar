@@ -6,6 +6,9 @@ from chainer import cuda
 from chainer import functions as F
 from chainer import links as L
 
+from functions import arrange
+from links import Hadamard
+
 class BatchConv2D(chainer.Chain):
     def __init__(self, ch_in, ch_out, ksize, stride=1, pad=0, activation=F.relu):
         super(BatchConv2D, self).__init__(
@@ -19,6 +22,33 @@ class BatchConv2D(chainer.Chain):
         if self.activation is None:
             return h
         return F.relu(h)
+
+class FastFood(chainer.Chain):
+    def __init__(self, size):
+        wscale = math.sqrt(2)
+        super(FastFood, self).__init__(
+            diag1=L.Linear(size, 1, nobias=True),
+            diag2=L.Linear(size, 1, nobias=True),
+            diag3=L.Linear(size, 1, nobias=True),
+            hadamard=Hadamard(size),
+        )
+
+        self.add_persistent('pi', np.random.permutation(size))
+
+    def __call__(self, x):
+        shape = x.data.shape
+        if len(shape) != 2:
+            h = F.reshape(x, (shape[0], -1))
+        else:
+            h = x
+        shape = h.data.shape
+        h = F.broadcast_to(self.diag1.W, shape) * h
+        h = self.hadamard(h)
+        h = arrange(h, chainer.Variable(self.pi, volatile=h.volatile))
+        h = F.broadcast_to(self.diag2.W, shape) * h
+        h = self.hadamard(h)
+        h = F.broadcast_to(self.diag3.W, shape) * h
+        return h
 
 class ResidualBlock(chainer.Chain):
     def __init__(self, ch_in, ch_out, stride=1, swapout=False, skip_ratio=0, activation1=F.relu, activation2=F.relu):
@@ -175,6 +205,39 @@ class VGG(chainer.Chain):
         h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
         h = F.relu(self.fc4(F.dropout(h, train=train)))
         h = F.relu(self.fc5(F.dropout(h, train=train)))
+        h = self.fc6(h)
+        return h
+
+class VGGFastFood(chainer.Chain):
+    def __init__(self):
+        super(VGGFastFood, self).__init__(
+            bconv1_1=BatchConv2D(3, 64, 3, stride=1, pad=1),
+            bconv1_2=BatchConv2D(64, 64, 3, stride=1, pad=1),
+            bconv2_1=BatchConv2D(64, 128, 3, stride=1, pad=1),
+            bconv2_2=BatchConv2D(128, 128, 3, stride=1, pad=1),
+            bconv3_1=BatchConv2D(128, 256, 3, stride=1, pad=1),
+            bconv3_2=BatchConv2D(256, 256, 3, stride=1, pad=1),
+            bconv3_3=BatchConv2D(256, 256, 3, stride=1, pad=1),
+            bconv3_4=BatchConv2D(256, 256, 3, stride=1, pad=1),
+            ff4=FastFood(4096),
+            ff5=FastFood(4096),
+            fc6=L.Linear(4096, 10),
+        )
+
+    def __call__(self, x, train=True):
+        h = self.bconv1_1(x, train)
+        h = self.bconv1_2(h, train)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
+        h = self.bconv2_1(h, train)
+        h = self.bconv2_2(h, train)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
+        h = self.bconv3_1(h, train)
+        h = self.bconv3_2(h, train)
+        h = self.bconv3_3(h, train)
+        h = self.bconv3_4(h, train)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
+        h = F.relu(self.ff4(F.dropout(h, train=train)))
+        h = F.relu(self.ff5(F.dropout(h, train=train)))
         h = self.fc6(h)
         return h
 

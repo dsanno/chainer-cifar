@@ -3,6 +3,7 @@ import cPickle as pickle
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+import time
 import chainer
 from chainer import optimizers
 from chainer import serializers
@@ -14,7 +15,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='CIFAR-10 dataset trainer')
     parser.add_argument('--gpu', '-g', type=int, default=-1,
                         help='GPU device ID (negative value indicates CPU)')
-    parser.add_argument('--model', '-m', type=str, default='vgg', choices=['cnn', 'cnnbn', 'vgg', 'residual', 'identity_mapping'],
+    parser.add_argument('--model', '-m', type=str, default='vgg', choices=['cnn', 'cnnbn', 'vgg', 'vgg_fastfood', 'residual', 'identity_mapping'],
                         help='Model name')
     parser.add_argument('--batch_size', '-b', type=int, default=100,
                         help='Mini batch size')
@@ -71,6 +72,8 @@ if __name__ == '__main__':
         cifar_net = net.CNN()
     elif args.model == 'cnnbn':
         cifar_net = net.CNNBN()
+    elif args.model == 'vgg_fastfood':
+        cifar_net = net.VGGFastFood()
     elif args.model == 'residual':
         cifar_net = net.ResidualNet(args.res_depth, swapout=args.swapout, skip=args.skip_depth)
     elif args.model == 'identity_mapping':
@@ -91,15 +94,17 @@ if __name__ == '__main__':
     else:
         model_prefix = args.prefix
 
-    state = {'best_valid_error': 100, 'best_test_error': 100}
+    state = {'best_valid_error': 100, 'best_test_error': 100, 'last_time': time.clock()}
     def on_epoch_done(epoch, n, o, loss, acc, valid_loss, valid_acc, test_loss, test_acc):
+        last_time = time.clock()
         error = 100 * (1 - acc)
         valid_error = 100 * (1 - valid_acc)
         test_error = 100 * (1 - test_acc)
-        print('epoch {} done'.format(epoch))
+        print('epoch {} done {} sec'.format(epoch, last_time - state['last_time']))
         print('train loss: {} error: {}'.format(loss, error))
         print('valid loss: {} error: {}'.format(valid_loss, valid_error))
         print('test  loss: {} error: {}'.format(test_loss, test_error))
+        state['last_time'] = last_time
         if valid_error < state['best_valid_error']:
             serializers.save_npz('{}.model'.format(model_prefix), n)
             serializers.save_npz('{}.state'.format(model_prefix), o)
