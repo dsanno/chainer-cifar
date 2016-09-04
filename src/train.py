@@ -7,14 +7,16 @@ import chainer
 from chainer import optimizers
 from chainer import serializers
 import net
+
 import trainer
 
+import time
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='CIFAR-10 dataset trainer')
     parser.add_argument('--gpu', '-g', type=int, default=-1,
                         help='GPU device ID (negative value indicates CPU)')
-    parser.add_argument('--model', '-m', type=str, default='vgg', choices=['cnn', 'cnnbn', 'vgg', 'residual', 'identity_mapping'],
+    parser.add_argument('--model', '-m', type=str, default='vgg', choices=['cnn', 'cnnbn', 'vgg', 'residual', 'identity_mapping', 'vgg_no_fc', 'vgg_wide', 'vgg_crelu', 'inception'],
                         help='Model name')
     parser.add_argument('--batch_size', '-b', type=int, default=100,
                         help='Mini batch size')
@@ -28,7 +30,7 @@ if __name__ == '__main__':
                         help='Training iteration')
     parser.add_argument('--save_iter', type=int, default=0,
                         help='Iteration interval to save model parameter file.')
-    parser.add_argument('--lr_decay_iter', type=int, default=100,
+    parser.add_argument('--lr_decay_iter', type=str, default='100',
                         help='Iteration interval to decay learning rate')
     parser.add_argument('--weight_decay', type=float, default=0.0001,
                         help='Weight decay')
@@ -50,6 +52,7 @@ if __name__ == '__main__':
 
     np.random.seed(args.seed)
     log_file_path = '{}_log.csv'.format(args.prefix)
+    lr_decay_iter = map(int, args.lr_decay_iter.split(','))
 
     print('loading dataset...')
     with open(args.dataset, 'rb') as f:
@@ -75,6 +78,14 @@ if __name__ == '__main__':
         cifar_net = net.ResidualNet(args.res_depth, swapout=args.swapout, skip=args.skip_depth)
     elif args.model == 'identity_mapping':
         cifar_net = net.IdentityMapping(args.res_depth, swapout=args.swapout)
+    elif args.model == 'vgg_no_fc':
+        cifar_net = net.VGGNoFC()
+    elif args.model == 'vgg_wide':
+        cifar_net = net.VGGWide()
+    elif args.model == 'vgg_crelu':
+        cifar_net = net.VGGCReLU()
+    elif args.model == 'inception':
+        cifar_net = net.Inception()
     else:
         cifar_net = net.VGG()
 
@@ -91,7 +102,7 @@ if __name__ == '__main__':
     else:
         model_prefix = args.prefix
 
-    state = {'best_valid_error': 100, 'best_test_error': 100}
+    state = {'best_valid_error': 100, 'best_test_error': 100, 'clock': time.clock()}
     def on_epoch_done(epoch, n, o, loss, acc, valid_loss, valid_acc, test_loss, test_acc):
         error = 100 * (1 - acc)
         valid_error = 100 * (1 - valid_acc)
@@ -108,11 +119,14 @@ if __name__ == '__main__':
         if args.save_iter > 0 and (epoch + 1) % args.save_iter == 0:
             serializers.save_npz('{}_{}.model'.format(model_prefix, epoch + 1), n)
             serializers.save_npz('{}_{}.state'.format(model_prefix, epoch + 1), o)
-        if (epoch + 1) % args.lr_decay_iter == 0:
+        if len(lr_decay_iter) == 1 and (epoch + 1) % lr_decay_iter[0] == 0 or epoch + 1 in lr_decay_iter:
             if hasattr(optimizer, 'alpha'):
                 o.alpha *= 0.1
             else:
                 o.lr *= 0.1
+        clock = time.clock()
+        print('elapsed time: {}'.format(clock - state['clock']))
+        state['clock'] = clock
         with open(log_file_path, 'a') as f:
             f.write('{},{},{},{},{}\n'.format(epoch + 1, loss, error, test_loss, test_error))
 

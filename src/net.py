@@ -6,6 +6,11 @@ from chainer import cuda
 from chainer import functions as F
 from chainer import links as L
 
+def crelu(x):
+    h1 = F.relu(x)
+    h2 = F.relu(-x)
+    return F.concat((h1, h2), axis=1)
+
 class BatchConv2D(chainer.Chain):
     def __init__(self, ch_in, ch_out, ksize, stride=1, pad=0, activation=F.relu):
         super(BatchConv2D, self).__init__(
@@ -18,7 +23,23 @@ class BatchConv2D(chainer.Chain):
         h = self.bn(self.conv(x), test=not train)
         if self.activation is None:
             return h
-        return F.relu(h)
+        return self.activation(h)
+
+class CReLUBlock(chainer.Chain):
+    def __init__(self, ch_in, ch_out, ksize, stride=1, pad=0, activation=F.relu):
+        super(CReLUBlock, self).__init__(
+            conv=L.Convolution2D(ch_in, ch_out // 2, ksize, stride, pad),
+            bn=L.BatchNormalization(ch_out),
+        )
+        self.activation=activation
+
+    def __call__(self, x, train):
+        h = self.conv(x)
+        h = F.concat((h, -h), axis=1)
+        h = self.bn(h, test=not train)
+        if self.activation is None:
+            return h
+        return self.activation(h)
 
 class ResidualBlock(chainer.Chain):
     def __init__(self, ch_in, ch_out, stride=1, swapout=False, skip_ratio=0, activation1=F.relu, activation2=F.relu):
@@ -156,6 +177,190 @@ class VGG(chainer.Chain):
             bconv3_2=BatchConv2D(256, 256, 3, stride=1, pad=1),
             bconv3_3=BatchConv2D(256, 256, 3, stride=1, pad=1),
             bconv3_4=BatchConv2D(256, 256, 3, stride=1, pad=1),
+            fc4=L.Linear(4 * 4 * 256, 1024),
+            fc5=L.Linear(1024, 1024),
+            fc6=L.Linear(1024, 10),
+        )
+
+    def __call__(self, x, train=True):
+        h = self.bconv1_1(x, train)
+        h = self.bconv1_2(h, train)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
+        h = self.bconv2_1(h, train)
+        h = self.bconv2_2(h, train)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
+        h = self.bconv3_1(h, train)
+        h = self.bconv3_2(h, train)
+        h = self.bconv3_3(h, train)
+        h = self.bconv3_4(h, train)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
+        h = F.relu(self.fc4(F.dropout(h, train=train)))
+        h = F.relu(self.fc5(F.dropout(h, train=train)))
+        h = self.fc6(h)
+        return h
+
+class VGGNoFC(chainer.Chain):
+    def __init__(self):
+        super(VGG, self).__init__(
+            bconv1_1=BatchConv2D(3, 64, 3, stride=1, pad=1),
+            bconv1_2=BatchConv2D(64, 64, 3, stride=1, pad=1),
+            bconv2_1=BatchConv2D(64, 128, 3, stride=1, pad=1),
+            bconv2_2=BatchConv2D(128, 128, 3, stride=1, pad=1),
+            bconv3_1=BatchConv2D(128, 256, 3, stride=1, pad=1),
+            bconv3_2=BatchConv2D(256, 256, 3, stride=1, pad=1),
+            bconv3_3=BatchConv2D(256, 256, 3, stride=1, pad=1),
+            bconv3_4=BatchConv2D(256, 256, 3, stride=1, pad=1),
+            fc=F.Linear(256, 10),
+        )
+
+    def __call__(self, x, train=True):
+        h = self.bconv1_1(x, train)
+        h = self.bconv1_2(h, train)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
+        h = self.bconv2_1(h, train)
+        h = self.bconv2_2(h, train)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
+        h = self.bconv3_1(h, train)
+        h = self.bconv3_2(h, train)
+        h = self.bconv3_3(h, train)
+        h = self.bconv3_4(h, train)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
+        h = F.average_pooling_2d(h, 4, 1, 0)
+        h = self.fc(F.dropout(h, train=train))
+        return h
+
+class VGGWide(chainer.Chain):
+    def __init__(self):
+        super(VGG2, self).__init__(
+            bconv1_1=BatchConv2D(3, 128, 3, stride=1, pad=1),
+            bconv1_2=BatchConv2D(128, 128, 3, stride=1, pad=1),
+            bconv1_3=BatchConv2D(128, 128, 3, stride=1, pad=1),
+            bconv1_4=BatchConv2D(128, 128, 3, stride=1, pad=1),
+            bconv2_1=BatchConv2D(128, 256, 3, stride=1, pad=1),
+            bconv2_2=BatchConv2D(256, 256, 3, stride=1, pad=1),
+            bconv2_3=BatchConv2D(256, 256, 3, stride=1, pad=1),
+            bconv2_4=BatchConv2D(256, 256, 3, stride=1, pad=1),
+            bconv3_1=BatchConv2D(256, 512, 3, stride=1, pad=1),
+            bconv3_2=BatchConv2D(512, 512, 3, stride=1, pad=1),
+            bconv3_3=BatchConv2D(512, 512, 3, stride=1, pad=1),
+            bconv3_4=BatchConv2D(512, 512, 3, stride=1, pad=1),
+            bconv3_5=BatchConv2D(512, 512, 3, stride=1, pad=1),
+            bconv3_6=BatchConv2D(512, 512, 3, stride=1, pad=1),
+            bconv3_7=BatchConv2D(512, 512, 3, stride=1, pad=1),
+            bconv3_8=BatchConv2D(512, 512, 3, stride=1, pad=1),
+            fc=F.Linear(512, 10),
+        )
+
+    def __call__(self, x, train=True):
+        h = self.bconv1_1(x, train)
+        h = F.dropout(h, 0.25, train=train)
+        h = self.bconv1_2(h, train)
+        h = F.dropout(h, 0.25, train=train)
+        h = self.bconv1_3(h, train)
+        h = F.dropout(h, 0.25, train=train)
+        h = self.bconv1_4(h, train)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
+        h = self.bconv2_1(h, train)
+        h = F.dropout(h, 0.25, train=train)
+        h = self.bconv2_2(h, train)
+        h = F.dropout(h, 0.25, train=train)
+        h = self.bconv2_3(h, train)
+        h = F.dropout(h, 0.25, train=train)
+        h = self.bconv2_4(h, train)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
+        h = self.bconv3_1(h, train)
+        h = F.dropout(h, 0.25, train=train)
+        h = self.bconv3_2(h, train)
+        h = F.dropout(h, 0.25, train=train)
+        h = self.bconv3_3(h, train)
+        h = F.dropout(h, 0.25, train=train)
+        h = self.bconv3_4(h, train)
+        h = F.dropout(h, 0.25, train=train)
+        h = self.bconv3_5(h, train)
+        h = F.dropout(h, 0.25, train=train)
+        h = self.bconv3_6(h, train)
+        h = F.dropout(h, 0.25, train=train)
+        h = self.bconv3_7(h, train)
+        h = F.dropout(h, 0.25, train=train)
+        h = self.bconv3_8(h, train)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
+        h = F.average_pooling_2d(h, 4, 1, 0)
+        h = self.fc(F.dropout(h, train=train))
+        return h
+
+class InceptionBlock(chainer.Chain):
+    def __init__(self, in_ch, out_ch):
+        conv_in_ch = (out_ch[0] + out_ch[1][1] + out_ch[2][2]) * 2
+        super(InceptionBlock, self).__init__(
+            conv1_1=BatchConv2D(in_ch, out_ch[0], 1, stride=1, pad=0),
+            conv2_1=BatchConv2D(in_ch, out_ch[1][0], 1, stride=1, pad=0),
+            conv2_2=BatchConv2D(out_ch[1][0], out_ch[1][1], 3, stride=1, pad=1),
+            conv3_1=BatchConv2D(in_ch, out_ch[2][0], 1, stride=1, pad=0),
+            conv3_2=BatchConv2D(out_ch[2][0], out_ch[2][1], 3, stride=1, pad=1),
+            conv3_3=BatchConv2D(out_ch[2][1], out_ch[2][2], 3, stride=1, pad=1),
+            conv4_1=BatchConv2D(in_ch, out_ch[0], 1, stride=1, pad=0),
+            conv5_1=BatchConv2D(in_ch, out_ch[1][0], 1, stride=1, pad=0),
+            conv5_2=BatchConv2D(out_ch[1][0], out_ch[1][1], 3, stride=1, pad=1),
+            conv6_1=BatchConv2D(in_ch, out_ch[2][0], 1, stride=1, pad=0),
+            conv6_2=BatchConv2D(out_ch[2][0], out_ch[2][1], 3, stride=1, pad=1),
+            conv6_3=BatchConv2D(out_ch[2][1], out_ch[2][2], 3, stride=1, pad=1),
+            conv=BatchConv2D(conv_in_ch, out_ch[3], 1, stride=1, pad=0, activation=None),
+        )
+
+    def __call__(self, x, train=True):
+        h1 = self.conv1_1(x, train=train)
+        h2 = self.conv2_2(self.conv2_1(x, train=train), train=train)
+        h3 = self.conv3_3(self.conv3_2(self.conv3_1(x, train=train), train=train), train=train)
+        h4 = self.conv4_1(x, train=train)
+        h5 = self.conv5_2(self.conv5_1(x, train=train), train=train)
+        h6 = self.conv6_3(self.conv6_2(self.conv6_1(x, train=train), train=train), train=train)
+        h = F.concat((h1, h2, h3, h4, h5, h6), axis=1)
+        return self.conv(h, train=train)
+
+class Inception(chainer.Chain):
+    def __init__(self):
+        super(Inception, self).__init__(
+            l0=BatchConv2D(3, 64, 5, stride=1, pad=2),
+            l1_1=InceptionBlock(64, (32, (16, 32), (16, 32, 32), 64)),
+            l1_2=InceptionBlock(64, (32, (16, 32), (16, 32, 32), 64)),
+            l2_1=InceptionBlock(64, (64, (32, 64), (32, 64, 64), 128)),
+            l2_2=InceptionBlock(128, (64, (32, 64), (32, 64, 64), 128)),
+            l3_1=InceptionBlock(128, (128, (64, 128), (64, 128, 128), 256)),
+            l3_2=InceptionBlock(256, (128, (64, 128), (64, 128, 128), 256)),
+            l4_1=InceptionBlock(256, (128, (64, 128), (64, 128, 128), 256)),
+            l4_2=InceptionBlock(256, (128, (64, 128), (64, 128, 128), 256)),
+            fc=L.Linear(256, 10),
+        )
+
+    def __call__(self, x, train=True):
+        h = self.l0(x, train=train)
+        h = self.l1_1(h, train=train)
+        h = self.l1_2(h, train=train)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
+        h = self.l2_1(h, train=train)
+        h = self.l2_2(h, train=train)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
+        h = self.l3_1(h, train=train)
+        h = self.l3_2(h, train=train)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
+        h = self.l4_1(h, train=train)
+        h = self.l4_2(h, train=train)
+        h = F.dropout(h, 0.25, train=train)
+        h = F.average_pooling_2d(h, 4, 1, 0)
+        h = self.fc(h)
+        return h
+
+class VGGCReLU(chainer.Chain):
+    def __init__(self):
+        super(CReLUVGG, self).__init__(
+            bconv1_1=CReLUBlock(3, 64, 3, stride=1, pad=1),
+            bconv1_2=CReLUBlock(64, 64, 3, stride=1, pad=1),
+            bconv2_1=CReLUBlock(64, 128, 3, stride=1, pad=1),
+            bconv2_2=CReLUBlock(128, 128, 3, stride=1, pad=1),
+            bconv3_1=CReLUBlock(128, 256, 3, stride=1, pad=1),
+            bconv3_2=CReLUBlock(256, 256, 3, stride=1, pad=1),
+            bconv3_3=CReLUBlock(256, 256, 3, stride=1, pad=1),
+            bconv3_4=CReLUBlock(256, 256, 3, stride=1, pad=1),
             fc4=L.Linear(4 * 4 * 256, 1024),
             fc5=L.Linear(1024, 1024),
             fc6=L.Linear(1024, 10),
