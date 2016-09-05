@@ -131,15 +131,15 @@ if __name__ == '__main__':
         print('elapsed time: {}'.format(clock - state['clock']))
         state['clock'] = clock
         with open(log_file_path, 'a') as f:
-            f.write('{},{},{},{},{}\n'.format(epoch + 1, loss, error, test_loss, test_error))
+            f.write('{},{},{},{},{},{},{}\n'.format(epoch + 1, loss, error, valid_loss, valid_error, test_loss, test_error))
 
     with open(log_file_path, 'w') as f:
-        f.write('epoch,train loss,train acc,test loss,test acc\n')
+        f.write('epoch,train loss,train acc,valid loss,valid acc,test loss,test acc\n')
     cifar_trainer.fit(train_x, train_y, valid_x, valid_y, test_x, test_y, on_epoch_done)
 
     print('best test error: {}'.format(state['best_test_error']))
 
-    train_loss, train_acc, test_loss, test_acc = np.loadtxt(log_file_path, delimiter=',', skiprows=1, usecols=[1, 2, 3, 4], unpack=True)
+    train_loss, train_acc, test_loss, test_acc = np.loadtxt(log_file_path, delimiter=',', skiprows=1, usecols=[1, 2, 5, 6], unpack=True)
     epoch = len(train_loss)
     xs = np.arange(epoch, dtype=np.int32) + 1
     plt.clf()
