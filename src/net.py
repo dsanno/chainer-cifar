@@ -96,7 +96,7 @@ class ResidualBlock(chainer.Chain):
             return h
 
 class IdentityMappingBlock(chainer.Chain):
-    def __init__(self, ch_in, ch_out, stride=1, swapout=False, activation1=F.relu, activation2=F.relu):
+    def __init__(self, ch_in, ch_out, stride=1, swapout=False, skip_ratio=0, activation1=F.relu, activation2=F.relu):
         w = math.sqrt(2)
         super(IdentityMappingBlock, self).__init__(
             bn1=L.BatchNormalization(ch_in),
@@ -107,9 +107,34 @@ class IdentityMappingBlock(chainer.Chain):
         self.activation1 = activation1
         self.activation2 = activation2
         self.swapout = swapout
+        self.skip_ratio = skip_ratio
 
     def __call__(self, x, train):
-        h = self.bn1(x, test=not train)
+        skip = False
+        if train and self.skip_ratio > 0 and np.random.rand() < self.skip_ratio:
+            skip = True
+        sh, sw = self.conv1.stride
+        c_out, c_in, kh, kw = self.conv1.W.data.shape
+        b, c, hh, ww = x.data.shape
+        if sh == 1 and sw == 1:
+            shape_out = (b, c_out, hh, ww)
+        else:
+            hh = (hh + 2 - kh) // sh + 1
+            ww = (ww + 2 - kw) // sw + 1
+            shape_out = (b, c_out, hh, ww)
+        h = x
+        if x.data.shape != shape_out:
+            xp = chainer.cuda.get_array_module(x.data)
+            n, c, hh, ww = x.data.shape
+            pad_c = shape_out[1] - c
+            p = xp.zeros((n, pad_c, hh, ww), dtype=xp.float32)
+            p = chainer.Variable(p, volatile=not train)
+            x = F.concat((p, x))
+            if x.data.shape[2:] != shape_out[2:]:
+                x = F.average_pooling_2d(x, 1, 2)
+        if skip:
+            return x
+        h = self.bn1(h, test=not train)
         if self.activation1 is not None:
             h = self.activation1(h)
         h = self.conv1(h)
@@ -117,15 +142,8 @@ class IdentityMappingBlock(chainer.Chain):
         if self.activation2 is not None:
             h = self.activation2(h)
         h = self.conv2(h)
-        if x.data.shape != h.data.shape:
-            xp = chainer.cuda.get_array_module(x.data)
-            n, c, hh, ww = x.data.shape
-            pad_c = h.data.shape[1] - c
-            p = xp.zeros((n, pad_c, hh, ww), dtype=xp.float32)
-            p = chainer.Variable(p, volatile=not train)
-            x = F.concat((p, x))
-            if x.data.shape[2:] != h.data.shape[2:]:
-                x = F.average_pooling_2d(x, 1, 2)
+        if not train:
+            h = h * (1 - self.skip_ratio)
         if self.swapout:
             return F.dropout(h, train=train) + F.dropout(x, train=train)
         else:
@@ -426,17 +444,30 @@ class ResidualNet(chainer.Chain):
         return h
 
 class IdentityMapping(chainer.Chain):
-    def __init__(self, depth=18, swapout=False):
+    def __init__(self, depth=18, swapout=False, skip=False):
         super(IdentityMapping, self).__init__()
         links = [('bconv1', BatchConv2D(3, 16, 3, 1, 1), True)]
+        skip_size = depth * 3 - 3
         for i in six.moves.range(depth):
-            links.append(('res{}'.format(len(links)), IdentityMappingBlock(16, 16, swapout=swapout, activation1=F.relu, activation2=F.relu), True))
+            if skip:
+                skip_ratio = float(i) / skip_size * 0.5
+            else:
+                skip_ratio = 0
+            links.append(('res{}'.format(len(links)), IdentityMappingBlock(16, 16, swapout=swapout, skip_ratio=skip_ratio, activation1=F.relu, activation2=F.relu), True))
         links.append(('res{}'.format(len(links)), IdentityMappingBlock(16, 32, stride=2, swapout=swapout, activation1=F.relu, activation2=F.relu), True))
         for i in six.moves.range(depth - 1):
-            links.append(('res{}'.format(len(links)), IdentityMappingBlock(32, 32, swapout=swapout, activation1=F.relu, activation2=F.relu), True))
+            if skip:
+                skip_ratio = float(i + depth) / skip_size * 0.5
+            else:
+                skip_ratio = 0
+            links.append(('res{}'.format(len(links)), IdentityMappingBlock(32, 32, swapout=swapout, skip_ratio=skip_ratio, activation1=F.relu, activation2=F.relu), True))
         links.append(('res{}'.format(len(links)), IdentityMappingBlock(32, 64, stride=2, swapout=swapout, activation1=F.relu, activation2=F.relu), True))
         for i in six.moves.range(depth - 1):
-            links.append(('res{}'.format(len(links)), IdentityMappingBlock(64, 64, swapout=swapout, activation1=F.relu, activation2=F.relu), True))
+            if skip:
+                skip_ratio = float(i + depth * 2 - 1) / skip_size * 0.5
+            else:
+                skip_ratio = 0
+            links.append(('res{}'.format(len(links)), IdentityMappingBlock(64, 64, swapout=swapout, skip_ratio=skip_ratio, activation1=F.relu, activation2=F.relu), True))
         links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False, True), False))
         links.append(('fc{}'.format(len(links)), L.Linear(64, 10), False))
 

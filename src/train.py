@@ -77,7 +77,7 @@ if __name__ == '__main__':
     elif args.model == 'residual':
         cifar_net = net.ResidualNet(args.res_depth, swapout=args.swapout, skip=args.skip_depth)
     elif args.model == 'identity_mapping':
-        cifar_net = net.IdentityMapping(args.res_depth, swapout=args.swapout)
+        cifar_net = net.IdentityMapping(args.res_depth, swapout=args.swapout, skip=args.skip_depth)
     elif args.model == 'vgg_no_fc':
         cifar_net = net.VGGNoFC()
     elif args.model == 'vgg_wide':
@@ -119,6 +119,9 @@ if __name__ == '__main__':
         if args.save_iter > 0 and (epoch + 1) % args.save_iter == 0:
             serializers.save_npz('{}_{}.model'.format(model_prefix, epoch + 1), n)
             serializers.save_npz('{}_{}.state'.format(model_prefix, epoch + 1), o)
+        # prevent divergence when using identity mapping model
+        if args.model == 'identity_mapping' and epoch < 9:
+            o.lr = 0.01 + 0.01 * (epoch + 1)
         if len(lr_decay_iter) == 1 and (epoch + 1) % lr_decay_iter[0] == 0 or epoch + 1 in lr_decay_iter:
             if hasattr(optimizer, 'alpha'):
                 o.alpha *= 0.1
