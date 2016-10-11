@@ -87,7 +87,7 @@ class CifarTrainer(object):
             left = max(0, left)
             top = max(0, top)
             right = min(size, left + size)
-            bottom = min(size, left + size)
+            bottom = min(size, top + size)
             if mirror[i] > 0:
                 images[i,:,size-bottom:size-top,size-right:size-left] = image[:,top:bottom, left:right][:,:,::-1]
             else:
