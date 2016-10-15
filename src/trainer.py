@@ -51,8 +51,8 @@ class CifarTrainer(object):
                     loss, acc = self.__forward(x_batch, valid_y[i:i + batch_size], train=False)
                     valid_loss += float(loss.data) * len(x_batch)
                     valid_acc += float(acc.data) * len(x_batch)
-            valid_loss /= len(valid_x)
-            valid_acc /= len(valid_x)
+                valid_loss /= len(valid_x)
+                valid_acc /= len(valid_x)
             test_loss = 0
             test_acc = 0
             if test_x is not None and test_y is not None:
@@ -89,7 +89,6 @@ class CifarTrainer(object):
             right = min(size, left + size)
             bottom = min(size, top + size)
             if mirror[i] > 0:
-                images[i,:,size-bottom:size-top,size-right:size-left] = image[:,top:bottom, left:right][:,:,::-1]
-            else:
-                images[i,:,size-bottom:size-top,size-right:size-left] = image[:,top:bottom,left:right]
+                image = image[:,:,::-1]
+            images[i,:,size-bottom:size-top,size-right:size-left] = image[:,top:bottom,left:right]
         return images
