@@ -16,7 +16,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='CIFAR-10 dataset trainer')
     parser.add_argument('--gpu', '-g', type=int, default=-1,
                         help='GPU device ID (negative value indicates CPU)')
-    parser.add_argument('--model', '-m', type=str, default='vgg', choices=['cnn', 'cnnbn', 'vgg', 'residual', 'identity_mapping', 'vgg_no_fc', 'vgg_wide', 'vgg_crelu', 'inception'],
+    parser.add_argument('--model', '-m', type=str, default='vgg', choices=['cnn', 'cnnbn', 'vgg', 'residual', 'identity_mapping', 'vgg_no_fc', 'vgg_wide', 'vgg_crelu', 'inception', 'pyramid'],
                         help='Model name')
     parser.add_argument('--batch_size', '-b', type=int, default=100,
                         help='Mini batch size')
@@ -86,6 +86,8 @@ if __name__ == '__main__':
         cifar_net = net.VGGCReLU()
     elif args.model == 'inception':
         cifar_net = net.Inception()
+    elif args.model == 'pyramid':
+        cifar_net = net.PyramidNet(args.res_depth)
     else:
         cifar_net = net.VGG()
 
