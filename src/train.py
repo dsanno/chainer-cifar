@@ -87,7 +87,7 @@ if __name__ == '__main__':
     elif args.model == 'inception':
         cifar_net = net.Inception()
     elif args.model == 'pyramid':
-        cifar_net = net.PyramidNet(args.res_depth)
+        cifar_net = net.PyramidNet(args.res_depth, skip=args.skip_depth)
     else:
         cifar_net = net.VGG()
 

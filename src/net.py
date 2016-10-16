@@ -151,7 +151,7 @@ class IdentityMappingBlock(chainer.Chain):
             return h + x
 
 class PyramidBlock(chainer.Chain):
-    def __init__(self, ch_in, ch_out, stride=1, activation=F.relu):
+    def __init__(self, ch_in, ch_out, stride=1, activation=F.relu, skip_ratio=0):
         initializer = initializers.Normal(scale=math.sqrt(2.0 / (ch_out * 3 * 3)))
         super(PyramidBlock, self).__init__(
             conv1=L.Convolution2D(ch_in, ch_out, 3, stride, 1, initialW=initializer),
@@ -161,9 +161,13 @@ class PyramidBlock(chainer.Chain):
             bn3=L.BatchNormalization(ch_out),
         )
         self.activation = activation
+        self.skip_ratio = skip_ratio
 
     def __call__(self, x, train):
         xp = chainer.cuda.get_array_module(x.data)
+        skip = False
+        if train and self.skip_ratio > 0 and np.random.rand() < self.skip_ratio:
+            skip = True
         sh, sw = self.conv1.stride
         c_out, c_in, kh, kw = self.conv1.W.data.shape
         b, c, hh, ww = x.data.shape
@@ -182,6 +186,8 @@ class PyramidBlock(chainer.Chain):
             p = xp.zeros((n, pad_c, hh, ww), dtype=xp.float32)
             p = chainer.Variable(p, volatile=not train)
             x = F.concat((x, p), axis=1)
+        if skip:
+            return x
         h = self.bn1(h, test=not train)
         h = self.conv1(h)
         h = self.bn2(h, test=not train)
@@ -189,6 +195,8 @@ class PyramidBlock(chainer.Chain):
             h = self.activation(h)
         h = self.conv2(h)
         h = self.bn3(h, test=not train)
+        if self.skip_ratio > 0 and not train:
+            h = h * (1 - self.skip_ratio)
         return h + x
 
 class CNN(chainer.Chain):
@@ -528,29 +536,42 @@ class IdentityMapping(chainer.Chain):
         return h
 
 class PyramidNet(chainer.Chain):
-    def __init__(self, depth=18, alpha=16, start_channel=16):
+    def __init__(self, depth=18, alpha=16, start_channel=16, skip=False):
         super(PyramidNet, self).__init__()
         channel_diff = float(alpha) / depth
         channel = start_channel
         links = [('bconv1', BatchConv2D(3, channel, 3, 1, 1), True, False)]
+        skip_size = depth * 3 - 3
         for i in six.moves.range(depth):
+            if skip:
+                skip_ratio = float(i) / skip_size * 0.5
+            else:
+                skip_ratio = 0
             in_channel = channel
             channel += channel_diff
-            links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel))), True, False))
+            links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel)),  skip_ratio=skip_ratio), True, False))
         in_channel = channel
         channel += channel_diff
         links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel)), stride=2), True, False))
         for i in six.moves.range(depth - 1):
+            if skip:
+                skip_ratio = float(i + depth) / skip_size * 0.5
+            else:
+                skip_ratio = 0
             in_channel = channel
             channel += channel_diff
-            links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel))), True, False))
+            links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel)),  skip_ratio=skip_ratio), True, False))
         in_channel = channel
         channel += channel_diff
         links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel)), stride=2), True, False))
         for i in six.moves.range(depth - 1):
+            if skip:
+                skip_ratio = float(i + depth * 2 - 1) / skip_size * 0.5
+            else:
+                skip_ratio = 0
             in_channel = channel
             channel += channel_diff
-            links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel))), True, False))
+            links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel)),  skip_ratio=skip_ratio), True, False))
         links.append(('bn{}'.format(len(links)), L.BatchNormalization(int(round(channel))), False, True))
         links.append(('_relu{}'.format(len(links)), F.ReLU(), False, False))
         links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False, True), False, False))
