@@ -6,6 +6,10 @@ from chainer import cuda
 from chainer import functions as F
 from chainer import links as L
 from chainer import initializers
+from chainer import function
+from chainer import link
+from chainer.utils import array
+from chainer.utils import type_check
 
 def crelu(x):
     h1 = F.relu(x)
@@ -22,6 +26,91 @@ class BatchConv2D(chainer.Chain):
 
     def __call__(self, x, train):
         h = self.bn(self.conv(x), test=not train)
+        if self.activation is None:
+            return h
+        return self.activation(h)
+
+class WeightNormalize(function.Function):
+
+    """weight normalization"""
+
+    def __init__(self, eps=1e-5):
+        self.eps = eps
+
+    def check_type_forward(self, in_types):
+        type_check.expect(in_types.size() == 2)
+        x_type, g_type = in_types
+
+        type_check.expect(
+            x_type.dtype == np.float32,
+            x_type.dtype == np.float32,
+            g_type.ndim == 0,
+        )
+
+    def forward(self, inputs):
+        x, g = inputs
+        xp = cuda.get_array_module(x)
+        norm = xp.linalg.norm(x) + self.eps
+        return g * x / norm,
+
+    def backward(self, inputs, gy):
+        x, g = inputs
+        gy = gy[0]
+        xp = cuda.get_array_module(x)
+
+        norm = xp.linalg.norm(x) + self.eps
+        gg = (x * gy).sum() / norm
+        gx = g * (gy * norm - gg * x)
+        gx = gx / norm ** 2
+
+        return gx, gg
+
+
+def weight_normalize(x, g, eps=1e-5):
+    return WeightNormalize(eps)(x, g)
+
+
+class WeightNormalization(link.Link):
+    def __init__(self, func, W_shape, **kwargs):
+        super(WeightNormalization, self).__init__()
+        self.func = func
+        self.kwargs = kwargs
+        self.add_param('V', W_shape, initializer=chainer.initializers.Normal(0.05))
+        self.add_uninitialized_param('g')
+        self.add_uninitialized_param('b')
+
+    def _initialize_params(self, t):
+        xp = cuda.get_array_module(t.data)
+        mean = xp.mean(t.data, axis=(0,) + tuple(six.moves.range(2, t.ndim)))
+        std = xp.std(t.data)
+        self.add_param('g', ())
+        self.g.data[...] = 1 / std
+        self.add_param('b', (t.shape[1],))
+        self.b.data[...] = - mean / std
+
+    def __call__(self, x):
+        if self.has_uninitialized_params:
+            xp = cuda.get_array_module(self.V.data)
+            W = weight_normalize(self.V, xp.asarray(1, self.V.dtype))
+            t = self.func(x, W, None, **self.kwargs)
+            self._initialize_params(t)
+        W = weight_normalize(self.V, self.g)
+        return self.func(x, W, self.b, **self.kwargs)
+
+
+class WNConv2D(chainer.Chain):
+    def __init__(self, ch_in, ch_out, ksize, stride=1, pad=0, activation=F.relu):
+        if hasattr(ksize, '__getitem__'):
+            kh, kw = ksize
+        else:
+            kh, kw = ksize, ksize
+        super(WNConv2D, self).__init__(
+            wn_conv=WeightNormalization(F.convolution_2d, (ch_out, ch_in, kh, kw), stride=stride, pad=pad),
+        )
+        self.activation=activation
+
+    def __call__(self, x):
+        h = self.wn_conv(x)
         if self.activation is None:
             return h
         return self.activation(h)
@@ -231,6 +320,23 @@ class CNNBN(chainer.Chain):
         h1 = F.max_pooling_2d(self.bconv1(x, train), 3, 2)
         h2 = F.max_pooling_2d(self.bconv2(h1, train), 3, 2)
         h3 = F.max_pooling_2d(self.bconv3(h2, train), 3, 2)
+        h4 = F.relu(self.l1(F.dropout(h3, train=train)))
+        return self.l2(F.dropout(h4, train=train))
+
+class CNNWN(chainer.Chain):
+    def __init__(self):
+        super(CNNWN, self).__init__(
+            wn_conv1=WNConv2D(3, 64, 5, stride=1, pad=2),
+            wn_conv2=WNConv2D(64, 64, 5, stride=1, pad=2),
+            wn_conv3=WNConv2D(64, 128, 5, stride=1, pad=2),
+            l1=L.Linear(4 * 4 * 128, 1000),
+            l2=L.Linear(1000, 10),
+        )
+
+    def __call__(self, x, train=True):
+        h1 = F.max_pooling_2d(self.wn_conv1(x), 3, 2)
+        h2 = F.max_pooling_2d(self.wn_conv2(h1), 3, 2)
+        h3 = F.max_pooling_2d(self.wn_conv3(h2), 3, 2)
         h4 = F.relu(self.l1(F.dropout(h3, train=train)))
         return self.l2(F.dropout(h4, train=train))
 

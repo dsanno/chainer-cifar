@@ -16,7 +16,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='CIFAR-10 dataset trainer')
     parser.add_argument('--gpu', '-g', type=int, default=-1,
                         help='GPU device ID (negative value indicates CPU)')
-    parser.add_argument('--model', '-m', type=str, default='vgg', choices=['cnn', 'cnnbn', 'vgg', 'residual', 'identity_mapping', 'vgg_no_fc', 'vgg_wide', 'vgg_crelu', 'inception', 'pyramid'],
+    parser.add_argument('--model', '-m', type=str, default='vgg', choices=['cnn', 'cnnbn', 'cnnwn', 'vgg', 'residual', 'identity_mapping', 'vgg_no_fc', 'vgg_wide', 'vgg_crelu', 'inception', 'pyramid'],
                         help='Model name')
     parser.add_argument('--batch_size', '-b', type=int, default=100,
                         help='Mini batch size')
@@ -74,6 +74,8 @@ if __name__ == '__main__':
         cifar_net = net.CNN()
     elif args.model == 'cnnbn':
         cifar_net = net.CNNBN()
+    elif args.model == 'cnnwn':
+        cifar_net = net.CNNWN()
     elif args.model == 'residual':
         cifar_net = net.ResidualNet(args.res_depth, swapout=args.swapout, skip=args.skip_depth)
     elif args.model == 'identity_mapping':
