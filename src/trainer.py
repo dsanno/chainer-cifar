@@ -1,6 +1,7 @@
 import numpy as np
 import six
 from scipy.misc import imresize, imrotate
+import time
 
 from chainer import functions as F
 from chainer import cuda
@@ -56,6 +57,7 @@ class CifarTrainer(object):
             test_loss = 0
             test_acc = 0
             if test_x is not None and test_y is not None:
+                start_clock = time.clock()
                 for i in six.moves.range(0, len(test_x), self.batch_size):
                     x_batch = test_x[i:i + batch_size]
                     loss, acc = self.__forward(x_batch, test_y[i:i + batch_size], train=False)
@@ -64,7 +66,7 @@ class CifarTrainer(object):
                 test_loss /= len(test_x)
                 test_acc /= len(test_x)
             if callback is not None:
-                callback(epoch, self.net, self.optimizer, train_loss, train_acc, valid_loss, valid_acc, test_loss, test_acc)
+                callback(epoch, self.net, self.optimizer, train_loss, train_acc, valid_loss, valid_acc, test_loss, test_acc, time.clock() - start_clock)
 
     def __forward(self, batch_x, batch_t, train=True):
         xp = self.xp

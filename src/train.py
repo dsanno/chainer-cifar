@@ -107,7 +107,7 @@ if __name__ == '__main__':
         model_prefix = args.prefix
 
     state = {'best_valid_error': 100, 'best_test_error': 100, 'clock': time.clock()}
-    def on_epoch_done(epoch, n, o, loss, acc, valid_loss, valid_acc, test_loss, test_acc):
+    def on_epoch_done(epoch, n, o, loss, acc, valid_loss, valid_acc, test_loss, test_acc, test_time):
         error = 100 * (1 - acc)
         valid_error = 100 * (1 - valid_acc)
         test_error = 100 * (1 - test_acc)
@@ -115,6 +115,7 @@ if __name__ == '__main__':
         print('train loss: {} error: {}'.format(loss, error))
         print('valid loss: {} error: {}'.format(valid_loss, valid_error))
         print('test  loss: {} error: {}'.format(test_loss, test_error))
+        print('test time: {}s'.format(test_time))
         if valid_error < state['best_valid_error']:
             serializers.save_npz('{}.model'.format(model_prefix), n)
             serializers.save_npz('{}.state'.format(model_prefix), o)
