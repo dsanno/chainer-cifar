@@ -75,8 +75,8 @@ class CifarTrainer(object):
 
     def __forward(self, batch_x, batch_t):
         xp = self.xp
-        x = Variable(xp.asarray(batch_x))
-        t = Variable(xp.asarray(batch_t))
+        x = xp.asarray(batch_x)
+        t = xp.asarray(batch_t)
         y = self.net(x)
         loss = F.softmax_cross_entropy(y, t)
         acc = F.accuracy(y, t)
