@@ -24,8 +24,8 @@ class BatchConv2D(chainer.Chain):
         )
         self.activation=activation
 
-    def __call__(self, x, train):
-        h = self.bn(self.conv(x), test=not train)
+    def __call__(self, x):
+        h = self.bn(self.conv(x))
         if self.activation is None:
             return h
         return self.activation(h)
@@ -123,10 +123,10 @@ class CReLUBlock(chainer.Chain):
         )
         self.activation=activation
 
-    def __call__(self, x, train):
+    def __call__(self, x):
         h = self.conv(x)
         h = F.concat((h, -h), axis=1)
-        h = self.bn(h, test=not train)
+        h = self.bn(h)
         if self.activation is None:
             return h
         return self.activation(h)
@@ -145,9 +145,9 @@ class ResidualBlock(chainer.Chain):
         self.skip_ratio = skip_ratio
         self.swapout = swapout
 
-    def __call__(self, x, train):
+    def __call__(self, x):
         skip = False
-        if train and self.skip_ratio > 0 and np.random.rand() < self.skip_ratio:
+        if chainer.config.train and self.skip_ratio > 0 and np.random.rand() < self.skip_ratio:
             skip = True
         sh, sw = self.conv1.stride
         c_out, c_in, kh, kw = self.conv1.W.data.shape
@@ -164,20 +164,20 @@ class ResidualBlock(chainer.Chain):
             n, c, hh, ww = x.data.shape
             pad_c = shape_out[1] - c
             p = xp.zeros((n, pad_c, hh, ww), dtype=xp.float32)
-            p = chainer.Variable(p, volatile=not train)
+            p = chainer.Variable(p)
             x = F.concat((p, x))
             if x.data.shape[2:] != shape_out[2:]:
                 x = F.average_pooling_2d(x, 1, 2)
         if skip:
             return x
-        h = self.bn1(self.conv1(h), test=not train)
+        h = self.bn1(self.conv1(h))
         if self.activation1 is not None:
             h = self.activation1(h)
-        h = self.bn2(self.conv2(h), test=not train)
-        if not train:
+        h = self.bn2(self.conv2(h))
+        if not chainer.config.train:
             h = h * (1 - self.skip_ratio)
         if self.swapout:
-            h = F.dropout(h, train=train) + F.dropout(x, train=train)
+            h = F.dropout(h) + F.dropout(x)
         else:
             h = h + x
         if self.activation2 is not None:
@@ -199,9 +199,9 @@ class IdentityMappingBlock(chainer.Chain):
         self.swapout = swapout
         self.skip_ratio = skip_ratio
 
-    def __call__(self, x, train):
+    def __call__(self, x):
         skip = False
-        if train and self.skip_ratio > 0 and np.random.rand() < self.skip_ratio:
+        if chainer.config.train and self.skip_ratio > 0 and np.random.rand() < self.skip_ratio:
             skip = True
         sh, sw = self.conv1.stride
         c_out, c_in, kh, kw = self.conv1.W.data.shape
@@ -218,24 +218,24 @@ class IdentityMappingBlock(chainer.Chain):
             n, c, hh, ww = x.data.shape
             pad_c = shape_out[1] - c
             p = xp.zeros((n, pad_c, hh, ww), dtype=xp.float32)
-            p = chainer.Variable(p, volatile=not train)
+            p = chainer.Variable(p)
             x = F.concat((p, x))
             if x.data.shape[2:] != shape_out[2:]:
                 x = F.average_pooling_2d(x, 1, 2)
         if skip:
             return x
-        h = self.bn1(h, test=not train)
+        h = self.bn1(h)
         if self.activation1 is not None:
             h = self.activation1(h)
         h = self.conv1(h)
-        h = self.bn2(h, test=not train)
+        h = self.bn2(h)
         if self.activation2 is not None:
             h = self.activation2(h)
         h = self.conv2(h)
-        if not train:
+        if not chainer.config.train:
             h = h * (1 - self.skip_ratio)
         if self.swapout:
-            return F.dropout(h, train=train) + F.dropout(x, train=train)
+            return F.dropout(h) + F.dropout(x)
         else:
             return h + x
 
@@ -252,10 +252,10 @@ class PyramidBlock(chainer.Chain):
         self.activation = activation
         self.skip_ratio = skip_ratio
 
-    def __call__(self, x, train):
+    def __call__(self, x):
         xp = chainer.cuda.get_array_module(x.data)
         skip = False
-        if train and self.skip_ratio > 0 and np.random.rand() < self.skip_ratio:
+        if chainer.config.train and self.skip_ratio > 0 and np.random.rand() < self.skip_ratio:
             skip = True
         sh, sw = self.conv1.stride
         c_out, c_in, kh, kw = self.conv1.W.data.shape
@@ -273,18 +273,18 @@ class PyramidBlock(chainer.Chain):
             n, c, hh, ww = x.data.shape
             pad_c = c_out - c
             p = xp.zeros((n, pad_c, hh, ww), dtype=xp.float32)
-            p = chainer.Variable(p, volatile=not train)
+            p = chainer.Variable(p)
             x = F.concat((x, p), axis=1)
         if skip:
             return x
-        h = self.bn1(h, test=not train)
+        h = self.bn1(h)
         h = self.conv1(h)
-        h = self.bn2(h, test=not train)
+        h = self.bn2(h)
         if self.activation is not None:
             h = self.activation(h)
         h = self.conv2(h)
-        h = self.bn3(h, test=not train)
-        if self.skip_ratio > 0 and not train:
+        h = self.bn3(h)
+        if self.skip_ratio > 0 and not chainer.config.train:
             h = h * (1 - self.skip_ratio)
         return h + x
 
@@ -299,12 +299,12 @@ class CNN(chainer.Chain):
             l2=L.Linear(1000, 10),
         )
 
-    def __call__(self, x, train=True):
+    def __call__(self, x):
         h1 = F.max_pooling_2d(F.relu(self.conv1(x)), 3, 2)
         h2 = F.max_pooling_2d(F.relu(self.conv2(h1)), 3, 2)
         h3 = F.max_pooling_2d(F.relu(self.conv3(h2)), 3, 2)
-        h4 = F.relu(self.l1(F.dropout(h3, train=train)))
-        return self.l2(F.dropout(h4, train=train))
+        h4 = F.relu(self.l1(F.dropout(h3)))
+        return self.l2(F.dropout(h4))
 
 class CNNBN(chainer.Chain):
     def __init__(self):
@@ -316,12 +316,12 @@ class CNNBN(chainer.Chain):
             l2=L.Linear(1000, 10),
         )
 
-    def __call__(self, x, train=True):
-        h1 = F.max_pooling_2d(self.bconv1(x, train), 3, 2)
-        h2 = F.max_pooling_2d(self.bconv2(h1, train), 3, 2)
-        h3 = F.max_pooling_2d(self.bconv3(h2, train), 3, 2)
-        h4 = F.relu(self.l1(F.dropout(h3, train=train)))
-        return self.l2(F.dropout(h4, train=train))
+    def __call__(self, x):
+        h1 = F.max_pooling_2d(self.bconv1(x), 3, 2)
+        h2 = F.max_pooling_2d(self.bconv2(h1), 3, 2)
+        h3 = F.max_pooling_2d(self.bconv3(h2), 3, 2)
+        h4 = F.relu(self.l1(F.dropout(h3)))
+        return self.l2(F.dropout(h4))
 
 class CNNWN(chainer.Chain):
     def __init__(self):
@@ -333,12 +333,12 @@ class CNNWN(chainer.Chain):
             l2=L.Linear(1000, 10),
         )
 
-    def __call__(self, x, train=True):
+    def __call__(self, x):
         h1 = F.max_pooling_2d(self.wn_conv1(x), 3, 2)
         h2 = F.max_pooling_2d(self.wn_conv2(h1), 3, 2)
         h3 = F.max_pooling_2d(self.wn_conv3(h2), 3, 2)
-        h4 = F.relu(self.l1(F.dropout(h3, train=train)))
-        return self.l2(F.dropout(h4, train=train))
+        h4 = F.relu(self.l1(F.dropout(h3)))
+        return self.l2(F.dropout(h4))
 
 class VGG(chainer.Chain):
     def __init__(self):
@@ -356,20 +356,20 @@ class VGG(chainer.Chain):
             fc6=L.Linear(1024, 10),
         )
 
-    def __call__(self, x, train=True):
-        h = self.bconv1_1(x, train)
-        h = self.bconv1_2(h, train)
-        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
-        h = self.bconv2_1(h, train)
-        h = self.bconv2_2(h, train)
-        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
-        h = self.bconv3_1(h, train)
-        h = self.bconv3_2(h, train)
-        h = self.bconv3_3(h, train)
-        h = self.bconv3_4(h, train)
-        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
-        h = F.relu(self.fc4(F.dropout(h, train=train)))
-        h = F.relu(self.fc5(F.dropout(h, train=train)))
+    def __call__(self, x):
+        h = self.bconv1_1(x)
+        h = self.bconv1_2(h)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25)
+        h = self.bconv2_1(h)
+        h = self.bconv2_2(h)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25)
+        h = self.bconv3_1(h)
+        h = self.bconv3_2(h)
+        h = self.bconv3_3(h)
+        h = self.bconv3_4(h)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25)
+        h = F.relu(self.fc4(F.dropout(h)))
+        h = F.relu(self.fc5(F.dropout(h)))
         h = self.fc6(h)
         return h
 
@@ -387,20 +387,20 @@ class VGGNoFC(chainer.Chain):
             fc=F.Linear(256, 10),
         )
 
-    def __call__(self, x, train=True):
-        h = self.bconv1_1(x, train)
-        h = self.bconv1_2(h, train)
-        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
-        h = self.bconv2_1(h, train)
-        h = self.bconv2_2(h, train)
-        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
-        h = self.bconv3_1(h, train)
-        h = self.bconv3_2(h, train)
-        h = self.bconv3_3(h, train)
-        h = self.bconv3_4(h, train)
-        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
+    def __call__(self, x):
+        h = self.bconv1_1(x)
+        h = self.bconv1_2(h)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25)
+        h = self.bconv2_1(h)
+        h = self.bconv2_2(h)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25)
+        h = self.bconv3_1(h)
+        h = self.bconv3_2(h)
+        h = self.bconv3_3(h)
+        h = self.bconv3_4(h)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25)
         h = F.average_pooling_2d(h, 4, 1, 0)
-        h = self.fc(F.dropout(h, train=train))
+        h = self.fc(F.dropout(h))
         return h
 
 class VGGWide(chainer.Chain):
@@ -425,41 +425,41 @@ class VGGWide(chainer.Chain):
             fc=F.Linear(512, 10),
         )
 
-    def __call__(self, x, train=True):
-        h = self.bconv1_1(x, train)
-        h = F.dropout(h, 0.25, train=train)
-        h = self.bconv1_2(h, train)
-        h = F.dropout(h, 0.25, train=train)
-        h = self.bconv1_3(h, train)
-        h = F.dropout(h, 0.25, train=train)
-        h = self.bconv1_4(h, train)
-        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
-        h = self.bconv2_1(h, train)
-        h = F.dropout(h, 0.25, train=train)
-        h = self.bconv2_2(h, train)
-        h = F.dropout(h, 0.25, train=train)
-        h = self.bconv2_3(h, train)
-        h = F.dropout(h, 0.25, train=train)
-        h = self.bconv2_4(h, train)
-        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
-        h = self.bconv3_1(h, train)
-        h = F.dropout(h, 0.25, train=train)
-        h = self.bconv3_2(h, train)
-        h = F.dropout(h, 0.25, train=train)
-        h = self.bconv3_3(h, train)
-        h = F.dropout(h, 0.25, train=train)
-        h = self.bconv3_4(h, train)
-        h = F.dropout(h, 0.25, train=train)
-        h = self.bconv3_5(h, train)
-        h = F.dropout(h, 0.25, train=train)
-        h = self.bconv3_6(h, train)
-        h = F.dropout(h, 0.25, train=train)
-        h = self.bconv3_7(h, train)
-        h = F.dropout(h, 0.25, train=train)
-        h = self.bconv3_8(h, train)
-        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
+    def __call__(self, x):
+        h = self.bconv1_1(x)
+        h = F.dropout(h, 0.25)
+        h = self.bconv1_2(h)
+        h = F.dropout(h, 0.25)
+        h = self.bconv1_3(h)
+        h = F.dropout(h, 0.25)
+        h = self.bconv1_4(h)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25)
+        h = self.bconv2_1(h)
+        h = F.dropout(h, 0.25)
+        h = self.bconv2_2(h)
+        h = F.dropout(h, 0.25)
+        h = self.bconv2_3(h)
+        h = F.dropout(h, 0.25)
+        h = self.bconv2_4(h)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25)
+        h = self.bconv3_1(h)
+        h = F.dropout(h, 0.25)
+        h = self.bconv3_2(h)
+        h = F.dropout(h, 0.25)
+        h = self.bconv3_3(h)
+        h = F.dropout(h, 0.25)
+        h = self.bconv3_4(h)
+        h = F.dropout(h, 0.25)
+        h = self.bconv3_5(h)
+        h = F.dropout(h, 0.25)
+        h = self.bconv3_6(h)
+        h = F.dropout(h, 0.25)
+        h = self.bconv3_7(h)
+        h = F.dropout(h, 0.25)
+        h = self.bconv3_8(h)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25)
         h = F.average_pooling_2d(h, 4, 1, 0)
-        h = self.fc(F.dropout(h, train=train))
+        h = self.fc(F.dropout(h))
         return h
 
 class InceptionBlock(chainer.Chain):
@@ -481,15 +481,15 @@ class InceptionBlock(chainer.Chain):
             conv=BatchConv2D(conv_in_ch, out_ch[3], 1, stride=1, pad=0, activation=None),
         )
 
-    def __call__(self, x, train=True):
-        h1 = self.conv1_1(x, train=train)
-        h2 = self.conv2_2(self.conv2_1(x, train=train), train=train)
-        h3 = self.conv3_3(self.conv3_2(self.conv3_1(x, train=train), train=train), train=train)
-        h4 = self.conv4_1(x, train=train)
-        h5 = self.conv5_2(self.conv5_1(x, train=train), train=train)
-        h6 = self.conv6_3(self.conv6_2(self.conv6_1(x, train=train), train=train), train=train)
+    def __call__(self, x):
+        h1 = self.conv1_1(x)
+        h2 = self.conv2_2(self.conv2_1(x))
+        h3 = self.conv3_3(self.conv3_2(self.conv3_1(x)))
+        h4 = self.conv4_1(x)
+        h5 = self.conv5_2(self.conv5_1(x))
+        h6 = self.conv6_3(self.conv6_2(self.conv6_1(x)))
         h = F.concat((h1, h2, h3, h4, h5, h6), axis=1)
-        return self.conv(h, train=train)
+        return self.conv(h)
 
 class Inception(chainer.Chain):
     def __init__(self):
@@ -506,20 +506,20 @@ class Inception(chainer.Chain):
             fc=L.Linear(256, 10),
         )
 
-    def __call__(self, x, train=True):
-        h = self.l0(x, train=train)
-        h = self.l1_1(h, train=train)
-        h = self.l1_2(h, train=train)
-        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
-        h = self.l2_1(h, train=train)
-        h = self.l2_2(h, train=train)
-        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
-        h = self.l3_1(h, train=train)
-        h = self.l3_2(h, train=train)
-        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
-        h = self.l4_1(h, train=train)
-        h = self.l4_2(h, train=train)
-        h = F.dropout(h, 0.25, train=train)
+    def __call__(self, x):
+        h = self.l0(x)
+        h = self.l1_1(h)
+        h = self.l1_2(h)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25)
+        h = self.l2_1(h)
+        h = self.l2_2(h)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25)
+        h = self.l3_1(h)
+        h = self.l3_2(h)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25)
+        h = self.l4_1(h)
+        h = self.l4_2(h)
+        h = F.dropout(h, 0.25)
         h = F.average_pooling_2d(h, 4, 1, 0)
         h = self.fc(h)
         return h
@@ -540,105 +540,99 @@ class VGGCReLU(chainer.Chain):
             fc6=L.Linear(1024, 10),
         )
 
-    def __call__(self, x, train=True):
-        h = self.bconv1_1(x, train)
-        h = self.bconv1_2(h, train)
-        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
-        h = self.bconv2_1(h, train)
-        h = self.bconv2_2(h, train)
-        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
-        h = self.bconv3_1(h, train)
-        h = self.bconv3_2(h, train)
-        h = self.bconv3_3(h, train)
-        h = self.bconv3_4(h, train)
-        h = F.dropout(F.max_pooling_2d(h, 2), 0.25, train=train)
-        h = F.relu(self.fc4(F.dropout(h, train=train)))
-        h = F.relu(self.fc5(F.dropout(h, train=train)))
+    def __call__(self, x):
+        h = self.bconv1_1(x)
+        h = self.bconv1_2(h)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25)
+        h = self.bconv2_1(h)
+        h = self.bconv2_2(h)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25)
+        h = self.bconv3_1(h)
+        h = self.bconv3_2(h)
+        h = self.bconv3_3(h)
+        h = self.bconv3_4(h)
+        h = F.dropout(F.max_pooling_2d(h, 2), 0.25)
+        h = F.relu(self.fc4(F.dropout(h)))
+        h = F.relu(self.fc5(F.dropout(h)))
         h = self.fc6(h)
         return h
 
 class ResidualNet(chainer.Chain):
     def __init__(self, depth=18, swapout=False, skip=False):
         super(ResidualNet, self).__init__()
-        links = [('bconv1', BatchConv2D(3, 16, 3, 1, 1), True)]
+        links = [('bconv1', BatchConv2D(3, 16, 3, 1, 1))]
         skip_size = depth * 3 - 3
         for i in six.moves.range(depth):
             if skip:
                 skip_ratio = float(i) / skip_size * 0.5
             else:
                 skip_ratio = 0
-            links.append(('res{}'.format(len(links)), ResidualBlock(16, 16, swapout=swapout, skip_ratio=skip_ratio, ), True))
-        links.append(('res{}'.format(len(links)), ResidualBlock(16, 32, stride=2, swapout=swapout), True))
+            links.append(('res{}'.format(len(links)), ResidualBlock(16, 16, swapout=swapout, skip_ratio=skip_ratio, )))
+        links.append(('res{}'.format(len(links)), ResidualBlock(16, 32, stride=2, swapout=swapout)))
         for i in six.moves.range(depth - 1):
             if skip:
                 skip_ratio = float(i + depth) / skip_size * 0.5
             else:
                 skip_ratio = 0
-            links.append(('res{}'.format(len(links)), ResidualBlock(32, 32, swapout=swapout, skip_ratio=skip_ratio), True))
-        links.append(('res{}'.format(len(links)), ResidualBlock(32, 64, stride=2, swapout=swapout), True))
+            links.append(('res{}'.format(len(links)), ResidualBlock(32, 32, swapout=swapout, skip_ratio=skip_ratio)))
+        links.append(('res{}'.format(len(links)), ResidualBlock(32, 64, stride=2, swapout=swapout)))
         for i in six.moves.range(depth - 1):
             if skip:
                 skip_ratio = float(i + depth * 2 - 1) / skip_size * 0.5
             else:
                 skip_ratio = 0
-            links.append(('res{}'.format(len(links)), ResidualBlock(64, 64, swapout=swapout, skip_ratio=skip_ratio), True))
-        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False, True), False))
-        links.append(('fc{}'.format(len(links)), L.Linear(64, 10), False))
+            links.append(('res{}'.format(len(links)), ResidualBlock(64, 64, swapout=swapout, skip_ratio=skip_ratio)))
+        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False, True)))
+        links.append(('fc{}'.format(len(links)), L.Linear(64, 10)))
 
-        for name, f, _with_train in links:
+        for name, f in links:
             if not name.startswith('_'):
                 self.add_link(*(name, f))
         self.layers = links
 
-    def __call__(self, x, train=True):
+    def __call__(self, x):
         h = x
-        for name, f, with_train in self.layers:
-            if with_train:
-                h = f(h, train=train)
-            else:
-                h = f(h)
+        for name, f in self.layers:
+            h = f(h)
         return h
 
 class IdentityMapping(chainer.Chain):
     def __init__(self, depth=18, swapout=False, skip=False):
         super(IdentityMapping, self).__init__()
-        links = [('bconv1', BatchConv2D(3, 16, 3, 1, 1), True)]
+        links = [('bconv1', BatchConv2D(3, 16, 3, 1, 1))]
         skip_size = depth * 3 - 3
         for i in six.moves.range(depth):
             if skip:
                 skip_ratio = float(i) / skip_size * 0.5
             else:
                 skip_ratio = 0
-            links.append(('res{}'.format(len(links)), IdentityMappingBlock(16, 16, swapout=swapout, skip_ratio=skip_ratio, activation1=F.relu, activation2=F.relu), True))
-        links.append(('res{}'.format(len(links)), IdentityMappingBlock(16, 32, stride=2, swapout=swapout, activation1=F.relu, activation2=F.relu), True))
+            links.append(('res{}'.format(len(links)), IdentityMappingBlock(16, 16, swapout=swapout, skip_ratio=skip_ratio, activation1=F.relu, activation2=F.relu)))
+        links.append(('res{}'.format(len(links)), IdentityMappingBlock(16, 32, stride=2, swapout=swapout, activation1=F.relu, activation2=F.relu)))
         for i in six.moves.range(depth - 1):
             if skip:
                 skip_ratio = float(i + depth) / skip_size * 0.5
             else:
                 skip_ratio = 0
-            links.append(('res{}'.format(len(links)), IdentityMappingBlock(32, 32, swapout=swapout, skip_ratio=skip_ratio, activation1=F.relu, activation2=F.relu), True))
-        links.append(('res{}'.format(len(links)), IdentityMappingBlock(32, 64, stride=2, swapout=swapout, activation1=F.relu, activation2=F.relu), True))
+            links.append(('res{}'.format(len(links)), IdentityMappingBlock(32, 32, swapout=swapout, skip_ratio=skip_ratio, activation1=F.relu, activation2=F.relu)))
+        links.append(('res{}'.format(len(links)), IdentityMappingBlock(32, 64, stride=2, swapout=swapout, activation1=F.relu, activation2=F.relu)))
         for i in six.moves.range(depth - 1):
             if skip:
                 skip_ratio = float(i + depth * 2 - 1) / skip_size * 0.5
             else:
                 skip_ratio = 0
-            links.append(('res{}'.format(len(links)), IdentityMappingBlock(64, 64, swapout=swapout, skip_ratio=skip_ratio, activation1=F.relu, activation2=F.relu), True))
-        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False, True), False))
-        links.append(('fc{}'.format(len(links)), L.Linear(64, 10), False))
+            links.append(('res{}'.format(len(links)), IdentityMappingBlock(64, 64, swapout=swapout, skip_ratio=skip_ratio, activation1=F.relu, activation2=F.relu)))
+        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False, True)))
+        links.append(('fc{}'.format(len(links)), L.Linear(64, 10)))
 
-        for name, f, _with_train in links:
+        for name, f in links:
             if not name.startswith('_'):
                 self.add_link(*(name, f))
         self.layers = links
 
-    def __call__(self, x, train=True):
+    def __call__(self, x):
         h = x
-        for name, f, with_train in self.layers:
-            if with_train:
-                h = f(h, train=train)
-            else:
-                h = f(h)
+        for name, f in self.layers:
+            h = f(h)
         return h
 
 class PyramidNet(chainer.Chain):
@@ -646,7 +640,7 @@ class PyramidNet(chainer.Chain):
         super(PyramidNet, self).__init__()
         channel_diff = float(alpha) / depth
         channel = start_channel
-        links = [('bconv1', BatchConv2D(3, channel, 3, 1, 1), True, False)]
+        links = [('bconv1', BatchConv2D(3, channel, 3, 1, 1))]
         skip_size = depth * 3 - 3
         for i in six.moves.range(depth):
             if skip:
@@ -655,10 +649,10 @@ class PyramidNet(chainer.Chain):
                 skip_ratio = 0
             in_channel = channel
             channel += channel_diff
-            links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel)),  skip_ratio=skip_ratio), True, False))
+            links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel)),  skip_ratio=skip_ratio)))
         in_channel = channel
         channel += channel_diff
-        links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel)), stride=2), True, False))
+        links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel)), stride=2)))
         for i in six.moves.range(depth - 1):
             if skip:
                 skip_ratio = float(i + depth) / skip_size * 0.5
@@ -666,10 +660,10 @@ class PyramidNet(chainer.Chain):
                 skip_ratio = 0
             in_channel = channel
             channel += channel_diff
-            links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel)),  skip_ratio=skip_ratio), True, False))
+            links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel)),  skip_ratio=skip_ratio)))
         in_channel = channel
         channel += channel_diff
-        links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel)), stride=2), True, False))
+        links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel)), stride=2)))
         for i in six.moves.range(depth - 1):
             if skip:
                 skip_ratio = float(i + depth * 2 - 1) / skip_size * 0.5
@@ -677,24 +671,19 @@ class PyramidNet(chainer.Chain):
                 skip_ratio = 0
             in_channel = channel
             channel += channel_diff
-            links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel)),  skip_ratio=skip_ratio), True, False))
-        links.append(('bn{}'.format(len(links)), L.BatchNormalization(int(round(channel))), False, True))
-        links.append(('_relu{}'.format(len(links)), F.ReLU(), False, False))
-        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False, True), False, False))
-        links.append(('fc{}'.format(len(links)), L.Linear(int(round(channel)), 10), False, False))
+            links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel)),  skip_ratio=skip_ratio)))
+        links.append(('bn{}'.format(len(links)), L.BatchNormalization(int(round(channel)))))
+        links.append(('_relu{}'.format(len(links)), F.ReLU()))
+        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False, True)))
+        links.append(('fc{}'.format(len(links)), L.Linear(int(round(channel)), 10)))
 
-        for name, f, _with_train, _with_test in links:
+        for name, f in links:
             if not name.startswith('_'):
                 self.add_link(*(name, f))
         self.layers = links
 
-    def __call__(self, x, train=True):
+    def __call__(self, x):
         h = x
-        for name, f, with_train, with_test in self.layers:
-            if with_train:
-                h = f(h, train=train)
-            elif with_test:
-                h = f(h, test=not train)
-            else:
-                h = f(h)
+        for name, f in self.layers:
+            h = f(h)
         return h
