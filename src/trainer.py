@@ -3,6 +3,7 @@ import six
 from scipy.misc import imresize, imrotate
 import time
 
+import chainer
 from chainer import functions as F
 from chainer import cuda
 from chainer import Variable
@@ -47,32 +48,36 @@ class CifarTrainer(object):
             valid_loss = 0
             valid_acc = 0
             if valid_x is not None and valid_y is not None:
-                for i in six.moves.range(0, len(valid_x), self.batch_size):
-                    x_batch = valid_x[i:i + batch_size]
-                    loss, acc = self.__forward(x_batch, valid_y[i:i + batch_size], train=False)
-                    valid_loss += float(loss.data) * len(x_batch)
-                    valid_acc += float(acc.data) * len(x_batch)
-                valid_loss /= len(valid_x)
-                valid_acc /= len(valid_x)
+                with chainer.using_config('enable_backprop', False):
+                    with chainer.using_config('train', False):
+                        for i in six.moves.range(0, len(valid_x), self.batch_size):
+                            x_batch = valid_x[i:i + batch_size]
+                            loss, acc = self.__forward(x_batch, valid_y[i:i + batch_size])
+                            valid_loss += float(loss.data) * len(x_batch)
+                            valid_acc += float(acc.data) * len(x_batch)
+                        valid_loss /= len(valid_x)
+                        valid_acc /= len(valid_x)
             test_loss = 0
             test_acc = 0
             if test_x is not None and test_y is not None:
                 start_clock = time.clock()
-                for i in six.moves.range(0, len(test_x), self.batch_size):
-                    x_batch = test_x[i:i + batch_size]
-                    loss, acc = self.__forward(x_batch, test_y[i:i + batch_size], train=False)
-                    test_loss += float(loss.data) * len(x_batch)
-                    test_acc += float(acc.data) * len(x_batch)
-                test_loss /= len(test_x)
-                test_acc /= len(test_x)
+                with chainer.using_config('enable_backprop', False):
+                    with chainer.using_config('train', False):
+                        for i in six.moves.range(0, len(test_x), self.batch_size):
+                            x_batch = test_x[i:i + batch_size]
+                            loss, acc = self.__forward(x_batch, test_y[i:i + batch_size])
+                            test_loss += float(loss.data) * len(x_batch)
+                            test_acc += float(acc.data) * len(x_batch)
+                        test_loss /= len(test_x)
+                        test_acc /= len(test_x)
             if callback is not None:
                 callback(epoch, self.net, self.optimizer, train_loss, train_acc, valid_loss, valid_acc, test_loss, test_acc, time.clock() - start_clock)
 
-    def __forward(self, batch_x, batch_t, train=True):
+    def __forward(self, batch_x, batch_t):
         xp = self.xp
-        x = Variable(xp.asarray(batch_x), volatile=not train)
-        t = Variable(xp.asarray(batch_t), volatile=not train)
-        y = self.net(x, train=train)
+        x = Variable(xp.asarray(batch_x))
+        t = Variable(xp.asarray(batch_t))
+        y = self.net(x)
         loss = F.softmax_cross_entropy(y, t)
         acc = F.accuracy(y, t)
         return loss, acc
