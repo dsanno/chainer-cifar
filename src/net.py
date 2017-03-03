@@ -375,7 +375,7 @@ class VGG(chainer.Chain):
 
 class VGGNoFC(chainer.Chain):
     def __init__(self):
-        super(VGG, self).__init__(
+        super(VGGNoFC, self).__init__(
             bconv1_1=BatchConv2D(3, 64, 3, stride=1, pad=1),
             bconv1_2=BatchConv2D(64, 64, 3, stride=1, pad=1),
             bconv2_1=BatchConv2D(64, 128, 3, stride=1, pad=1),
