@@ -698,3 +698,130 @@ class PyramidNet(chainer.Chain):
             else:
                 h = f(h)
         return h
+
+
+class ShakeShake(function.Function):
+
+    """shake shake regularization"""
+
+    def __init__(self):
+        pass
+
+    def check_type_forward(self, in_types):
+        type_check.expect(in_types.size() == 2)
+        x1_type, x2_type = in_types
+        type_check.expect(
+            x1_type.dtype.kind == 'f',
+            x1_type.dtype == x2_type.dtype,
+            x1_type.shape == x2_type.shape,
+        )
+
+    def forward(self, inputs):
+        x1, x2 = inputs
+
+        xp = cuda.get_array_module(*inputs)
+        x_shape = x1.shape
+        w_shape = [x_shape[0]] + [1] * (len(x_shape) - 1)
+        if xp == np:
+            weight = xp.random.rand(*w_shape)
+        else:
+            weight = xp.random.rand(*w_shape, dtype=x1.dtype)
+        return x1 * weight + x2 * (1 - weight),
+
+    def backward(self, inputs, gy):
+        xp = cuda.get_array_module(*gy)
+        g_shape = gy[0].shape
+        w_shape = [g_shape[0]] + [1] * (len(g_shape) - 1)
+        if xp == np:
+            weight = xp.random.rand(*w_shape)
+        else:
+            weight = xp.random.rand(*w_shape, dtype=gy[0].dtype)
+        return gy[0] * weight, gy[0] * (1 - weight)
+
+
+def shake_shake(x1, x2, train=True):
+    if train:
+        return ShakeShake()(x1, x2)
+    return 0.5 * (x1 + x2)
+
+
+class ShakeShakeResidualBlock(chainer.Chain):
+    def __init__(self, ch_in, ch_out, stride=1, activation1=F.relu, activation2=F.relu):
+        initialW = chainer.initializers.HeNormal()
+        super(ShakeShakeResidualBlock, self).__init__(
+            conv1_1=L.Convolution2D(ch_in, ch_out, 3, stride, 1, initialW=initialW),
+            bn1_1=L.BatchNormalization(ch_out),
+            conv1_2=L.Convolution2D(ch_out, ch_out, 3, 1, 1, initialW=initialW),
+            bn1_2=L.BatchNormalization(ch_out),
+            conv2_1=L.Convolution2D(ch_in, ch_out, 3, stride, 1, initialW=initialW),
+            bn2_1=L.BatchNormalization(ch_out),
+            conv2_2=L.Convolution2D(ch_out, ch_out, 3, 1, 1, initialW=initialW),
+            bn2_2=L.BatchNormalization(ch_out),
+        )
+        self.activation1 = activation1
+        self.activation2 = activation2
+
+    def __call__(self, x, train=True):
+        sh, sw = self.conv1_1.stride
+        c_out, c_in, kh, kw = self.conv1_1.W.data.shape
+        b, c, hh, ww = x.data.shape
+        if sh == 1 and sw == 1:
+            shape_out = (b, c_out, hh, ww)
+        else:
+            hh = (hh + 2 - kh) // sh + 1
+            ww = (ww + 2 - kw) // sw + 1
+            shape_out = (b, c_out, hh, ww)
+        h = x
+        if x.data.shape != shape_out:
+            xp = chainer.cuda.get_array_module(x.data)
+            n, c, hh, ww = x.data.shape
+            pad_c = shape_out[1] - c
+            p = xp.zeros((n, pad_c, hh, ww), dtype=xp.float32)
+            x = F.concat((p, x))
+            if x.data.shape[2:] != shape_out[2:]:
+                x = F.average_pooling_2d(x, 1, 2)
+        h1 = self.bn1_1(self.conv1_1(h), test=not train)
+        h2 = self.bn2_1(self.conv2_1(h), test=not train)
+        if self.activation1 is not None:
+            h1 = self.activation1(h1)
+            h2 = self.activation1(h2)
+        h1 = self.bn1_2(self.conv1_2(h1), test=not train)
+        h2 = self.bn2_2(self.conv2_2(h2), test=not train)
+        h = shake_shake(h1, h2) + x
+        if self.activation2 is not None:
+            return self.activation2(h)
+        else:
+            return h
+
+
+class ShakeShakeResidualNet(chainer.Chain):
+    def __init__(self, depth=4, width=2):
+        super(ShakeShakeResidualNet, self).__init__()
+        channel_size = 16 * width
+        links = [('bconv1', BatchConv2D(3, channel_size, 3, 1, 1), True)]
+        for i in six.moves.range(depth):
+            links.append(('res{}'.format(len(links)), ShakeShakeResidualBlock(channel_size, channel_size), True))
+        links.append(('res{}'.format(len(links)), ShakeShakeResidualBlock(channel_size, channel_size * 2, stride=2), True))
+        channel_size *= 2
+        for i in six.moves.range(depth - 1):
+            links.append(('res{}'.format(len(links)), ShakeShakeResidualBlock(channel_size, channel_size), True))
+        links.append(('res{}'.format(len(links)), ShakeShakeResidualBlock(channel_size, channel_size * 2, stride=2), True))
+        channel_size *= 2
+        for i in six.moves.range(depth - 1):
+            links.append(('res{}'.format(len(links)), ShakeShakeResidualBlock(channel_size, channel_size), True))
+        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False, True), False))
+        links.append(('fc{}'.format(len(links)), L.Linear(channel_size, 10), False))
+
+        for name, f, _with_train in links:
+            if not name.startswith('_'):
+                self.add_link(*(name, f))
+        self.layers = links
+
+    def __call__(self, x, train=True):
+        h = x
+        for name, f, with_train in self.layers:
+            if with_train:
+                h = f(h, train=train)
+            else:
+                h = f(h)
+        return h

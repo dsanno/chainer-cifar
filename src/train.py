@@ -47,7 +47,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='CIFAR-10 dataset trainer')
     parser.add_argument('--gpu', '-g', type=int, default=-1,
                         help='GPU device ID (negative value indicates CPU)')
-    parser.add_argument('--model', '-m', type=str, default='vgg', choices=['cnn', 'cnnbn', 'cnnwn', 'vgg', 'residual', 'identity_mapping', 'vgg_no_fc', 'vgg_wide', 'vgg_crelu', 'inception', 'pyramid'],
+    parser.add_argument('--model', '-m', type=str, default='vgg', choices=['cnn', 'cnnbn', 'cnnwn', 'vgg', 'residual', 'identity_mapping', 'vgg_no_fc', 'vgg_wide', 'vgg_crelu', 'inception', 'pyramid', 'shake_residual'],
                         help='Model name')
     parser.add_argument('--batch_size', '-b', type=int, default=100,
                         help='Mini batch size')
@@ -75,6 +75,8 @@ if __name__ == '__main__':
                         help='Initial alpha for Adam')
     parser.add_argument('--res_depth', type=int, default=18,
                         help='Depth of Residual Network')
+    parser.add_argument('--res_width', type=int, default=2,
+                        help='Width of Residual Network')
     parser.add_argument('--skip_depth', action='store_true',
                         help='Use stochastic depth in Residual Network')
     parser.add_argument('--swapout', action='store_true',
@@ -126,6 +128,8 @@ if __name__ == '__main__':
         cifar_net = net.Inception()
     elif args.model == 'pyramid':
         cifar_net = net.PyramidNet(args.res_depth, skip=args.skip_depth)
+    elif args.model == 'shake_residual':
+        cifar_net = net.ShakeShakeResidualNet(args.res_depth, args.res_width)
     else:
         cifar_net = net.VGG()
 
@@ -136,7 +140,7 @@ if __name__ == '__main__':
     optimizer.setup(cifar_net)
     if args.weight_decay > 0:
         optimizer.add_hook(chainer.optimizer.WeightDecay(args.weight_decay))
-    cifar_trainer = trainer.CifarTrainer(cifar_net, optimizer, args.iter, args.batch_size, args.gpu)
+    cifar_trainer = trainer.CifarTrainer(cifar_net, optimizer, args.iter, args.batch_size, args.gpu, lr_shape=args.lr_shape)
     if args.prefix is None:
         model_prefix = '{}_{}'.format(args.model, args.optimizer)
     else:
@@ -163,11 +167,6 @@ if __name__ == '__main__':
         # prevent divergence when using identity mapping model
         if args.model == 'identity_mapping' and epoch < 9:
             o.lr = 0.01 + 0.01 * (epoch + 1)
-        if len(lr_decay_iter) == 1 and (epoch + 1) % lr_decay_iter[0] == 0 or epoch + 1 in lr_decay_iter:
-            if hasattr(optimizer, 'alpha'):
-                o.alpha *= 0.1
-            else:
-                o.lr *= 0.1
         clock = time.clock()
         print('elapsed time: {}'.format(clock - state['clock']))
         state['clock'] = clock
