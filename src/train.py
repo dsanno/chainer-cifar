@@ -12,6 +12,37 @@ import trainer
 
 import time
 
+class CifarDataset(chainer.datasets.TupleDataset):
+
+    def __init__(self, x, y, augment=False):
+        super(CifarDataset, self).__init__(x, y)
+        self._augment = augment
+
+    def __getitem__(self, index):
+        items = super(CifarDataset, self).__getitem__(index)
+        if not self._augment:
+            return items
+        if isinstance(index, slice):
+            return [(self._transform(x), y) for (x, y) in items]
+        else:
+            x, y = items
+            return self._transform(x), y
+
+    def _transform(self, x):
+        image = np.zeros_like(x)
+        size = x.shape[2]
+        offset = np.random.randint(-4, 5, size=(2,))
+        mirror = np.random.randint(2)
+        top, left = offset
+        left = max(0, left)
+        top = max(0, top)
+        right = min(size, left + size)
+        bottom = min(size, top + size)
+        if mirror > 0:
+            x = x[:,:,::-1]
+        image[:,size-bottom:size-top,size-right:size-left] = x[:,top:bottom,left:right]
+        return image
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='CIFAR-10 dataset trainer')
     parser.add_argument('--gpu', '-g', type=int, default=-1,
@@ -32,6 +63,8 @@ if __name__ == '__main__':
                         help='Iteration interval to save model parameter file.')
     parser.add_argument('--lr_decay_iter', type=str, default='100',
                         help='Iteration interval to decay learning rate')
+    parser.add_argument('--lr_shape', type=str, default='multistep', choices=['multistep', 'cosine'],
+                        help='Learning rate annealing function, multistep or cosine')
     parser.add_argument('--weight_decay', type=float, default=0.0001,
                         help='Weight decay')
     parser.add_argument('--optimizer', type=str, default='sgd', choices=['sgd', 'adam'],
@@ -68,6 +101,9 @@ if __name__ == '__main__':
         train_y = labels['train'][train_index]
         valid_y = labels['train'][valid_index]
         test_y = labels['test']
+    train_data = CifarDataset(train_x, train_y, augment=True)
+    valid_data = CifarDataset(valid_x, valid_y, augment=False)
+    test_data = CifarDataset(test_x, test_y, augment=False)
 
     print('start training')
     if args.model == 'cnn':
@@ -140,7 +176,7 @@ if __name__ == '__main__':
 
     with open(log_file_path, 'w') as f:
         f.write('epoch,train loss,train acc,valid loss,valid acc,test loss,test acc\n')
-    cifar_trainer.fit(train_x, train_y, valid_x, valid_y, test_x, test_y, on_epoch_done)
+    cifar_trainer.fit(train_data, valid_data, test_data, on_epoch_done)
 
     print('best test error: {}'.format(state['best_test_error']))
 

@@ -3,6 +3,8 @@ import six
 from scipy.misc import imresize, imrotate
 import time
 
+import chainer
+from chainer.dataset import convert
 from chainer import functions as F
 from chainer import cuda
 from chainer import Variable
@@ -20,53 +22,64 @@ class CifarTrainer(object):
         else:
             self.xp = np
 
-    def fit(self, x, y, valid_x, valid_y, test_x=None, test_y=None, callback=None):
+    def fit(self, train_data, valid_data=None, test_data=None, callback=None):
         if self.device_id >= 0:
             with cuda.cupy.cuda.Device(self.device_id):
-                return self.__fit(x, y, valid_x, valid_y, test_x, test_y, callback)
+                return self.__fit(train_data, valid_data, test_data, callback)
         else:
-            return self.__fit(x, y, valid_x, valid_y, test_x, test_y, callback)
+            return self.__fit(train_data, valid_data, test_data, callback)
 
-    def __fit(self, x, y, valid_x, valid_y, test_x, test_y, callback):
+    def __fit(self, train_data, valid_data, test_data, callback):
         batch_size = self.batch_size
-        for epoch in six.moves.range(self.epoch_num):
-            perm = np.random.permutation(len(x))
-            train_loss = 0
-            train_acc = 0
-            for i in six.moves.range(0, len(x), self.batch_size):
-                self.net.zerograds()
-                batch_index = perm[i:i + batch_size]
-                x_batch = self.__trans_image(x[batch_index])
-                loss, acc = self.__forward(x_batch, y[batch_index])
-                loss.backward()
-                self.optimizer.update()
-                train_loss += float(loss.data) * len(x_batch)
-                train_acc += float(acc.data) * len(x_batch)
-            train_loss /= len(x)
-            train_acc /= len(x)
+        train_iterator = chainer.iterators.SerialIterator(train_data, self.batch_size, repeat=True, shuffle=True)
+        train_loss = 0
+        train_acc = 0
+        num = 0
+        while train_iterator.epoch < self.epoch_num:
+            batch = train_iterator.next()
+            x_batch, y_batch = convert.concat_examples(batch, self.device_id)
+            loss, acc = self.__forward(x_batch, y_batch)
+            self.net.cleargrads()
+            loss.backward()
+            self.optimizer.update()
+            train_loss += float(loss.data) * len(x_batch)
+            train_acc += float(acc.data) * len(x_batch)
+            num += len(x_batch)
+            if not train_iterator.is_new_epoch:
+                continue
+            train_loss /= num
+            train_acc /= num
             valid_loss = 0
             valid_acc = 0
-            if valid_x is not None and valid_y is not None:
-                for i in six.moves.range(0, len(valid_x), self.batch_size):
-                    x_batch = valid_x[i:i + batch_size]
-                    loss, acc = self.__forward(x_batch, valid_y[i:i + batch_size], train=False)
-                    valid_loss += float(loss.data) * len(x_batch)
-                    valid_acc += float(acc.data) * len(x_batch)
-                valid_loss /= len(valid_x)
-                valid_acc /= len(valid_x)
+            if valid_data is not None:
+                valid_loss, valid_acc = self.__evaluate(valid_data)
             test_loss = 0
             test_acc = 0
-            if test_x is not None and test_y is not None:
+            test_time = 0
+            if test_data is not None:
                 start_clock = time.clock()
-                for i in six.moves.range(0, len(test_x), self.batch_size):
-                    x_batch = test_x[i:i + batch_size]
-                    loss, acc = self.__forward(x_batch, test_y[i:i + batch_size], train=False)
-                    test_loss += float(loss.data) * len(x_batch)
-                    test_acc += float(acc.data) * len(x_batch)
-                test_loss /= len(test_x)
-                test_acc /= len(test_x)
+                test_loss, test_acc = self.__evaluate(test_data)
+                test_time = time.clock() - start_clock
             if callback is not None:
-                callback(epoch, self.net, self.optimizer, train_loss, train_acc, valid_loss, valid_acc, test_loss, test_acc, time.clock() - start_clock)
+                callback(train_iterator.epoch, self.net, self.optimizer, train_loss, train_acc, valid_loss, valid_acc, test_loss, test_acc, test_time)
+            train_loss = 0
+            train_acc = 0
+            num = 0
+        train_iterator.finalize()
+
+    def __evaluate(self, data):
+        iterator = chainer.iterators.SerialIterator(data, self.batch_size, repeat=False, shuffle=False)
+        total_loss = 0
+        total_acc = 0
+        num = 0
+        for batch in iterator:
+            x_batch, y_batch = convert.concat_examples(batch, self.device_id)
+            loss, acc = self.__forward(x_batch, y_batch, train=False)
+            total_loss += float(loss.data) * len(x_batch)
+            total_acc += float(acc.data) * len(x_batch)
+            num += len(x_batch)
+        iterator.finalize()
+        return total_loss / num, total_acc / num
 
     def __forward(self, batch_x, batch_t, train=True):
         xp = self.xp
@@ -76,21 +89,3 @@ class CifarTrainer(object):
         loss = F.softmax_cross_entropy(y, t)
         acc = F.accuracy(y, t)
         return loss, acc
-
-    def __trans_image(self, x):
-        size = 32
-        n = x.shape[0]
-        images = np.zeros((n, 3, size, size), dtype=np.float32)
-        offset = np.random.randint(-4, 5, size=(n, 2))
-        mirror = np.random.randint(2, size=n)
-        for i in six.moves.range(n):
-            image = x[i]
-            top, left = offset[i]
-            left = max(0, left)
-            top = max(0, top)
-            right = min(size, left + size)
-            bottom = min(size, top + size)
-            if mirror[i] > 0:
-                image = image[:,:,::-1]
-            images[i,:,size-bottom:size-top,size-right:size-left] = image[:,top:bottom,left:right]
-        return images
