@@ -787,7 +787,7 @@ class ShakeShakeResidualBlock(chainer.Chain):
             h2 = self.activation1(h2)
         h1 = self.bn1_2(self.conv1_2(h1), test=not train)
         h2 = self.bn2_2(self.conv2_2(h2), test=not train)
-        h = shake_shake(h1, h2) + x
+        h = shake_shake(h1, h2, train=train) + x
         if self.activation2 is not None:
             return self.activation2(h)
         else:
