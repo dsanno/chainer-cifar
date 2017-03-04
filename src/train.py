@@ -73,6 +73,8 @@ if __name__ == '__main__':
                         help='Initial learning rate for SGD')
     parser.add_argument('--alpha', type=float, default=0.001,
                         help='Initial alpha for Adam')
+    parser.add_argument('--no_valid_data', action='store_true',
+                        help='Do not use validation data')
     parser.add_argument('--res_depth', type=int, default=18,
                         help='Depth of Residual Network')
     parser.add_argument('--res_width', type=int, default=2,
@@ -92,19 +94,23 @@ if __name__ == '__main__':
     print('loading dataset...')
     with open(args.dataset, 'rb') as f:
         images = pickle.load(f)
-        index = np.random.permutation(len(images['train']))
-        train_index = index[:-5000]
-        valid_index = index[-5000:]
-        train_x = images['train'][train_index].reshape((-1, 3, 32, 32))
-        valid_x = images['train'][valid_index].reshape((-1, 3, 32, 32))
-        test_x = images['test'].reshape((-1, 3, 32, 32))
     with open(args.label, 'rb') as f:
         labels = pickle.load(f)
-        train_y = labels['train'][train_index]
+    index = np.random.permutation(len(images['train']))
+    if args.no_valid_data:
+        valid_data = None
+        train_index = index
+    else:
+        train_index = index[:-5000]
+        valid_index = index[-5000:]
+        valid_x = images['train'][valid_index].reshape((-1, 3, 32, 32))
         valid_y = labels['train'][valid_index]
-        test_y = labels['test']
+        valid_data = CifarDataset(valid_x, valid_y, augment=False)
+    train_x = images['train'][train_index].reshape((-1, 3, 32, 32))
+    train_y = labels['train'][train_index]
     train_data = CifarDataset(train_x, train_y, augment=True)
-    valid_data = CifarDataset(valid_x, valid_y, augment=False)
+    test_x = images['test'].reshape((-1, 3, 32, 32))
+    test_y = labels['test']
     test_data = CifarDataset(test_x, test_y, augment=False)
 
     print('start training')
@@ -149,17 +155,27 @@ if __name__ == '__main__':
     state = {'best_valid_error': 100, 'best_test_error': 100, 'clock': time.clock()}
     def on_epoch_done(epoch, n, o, loss, acc, valid_loss, valid_acc, test_loss, test_acc, test_time):
         error = 100 * (1 - acc)
-        valid_error = 100 * (1 - valid_acc)
-        test_error = 100 * (1 - test_acc)
         print('epoch {} done'.format(epoch))
         print('train loss: {} error: {}'.format(loss, error))
-        print('valid loss: {} error: {}'.format(valid_loss, valid_error))
-        print('test  loss: {} error: {}'.format(test_loss, test_error))
-        print('test time: {}s'.format(test_time))
-        if valid_error < state['best_valid_error']:
+        if valid_loss is not None:
+            valid_error = 100 * (1 - valid_acc)
+            print('valid loss: {} error: {}'.format(valid_loss, valid_error))
+        else:
+            valid_error = None
+        if test_loss is not None:
+            test_error = 100 * (1 - test_acc)
+            print('test  loss: {} error: {}'.format(test_loss, test_error))
+            print('test time: {}s'.format(test_time))
+        else:
+            test_error = None
+        if valid_loss is not None and valid_error < state['best_valid_error']:
             serializers.save_npz('{}.model'.format(model_prefix), n)
             serializers.save_npz('{}.state'.format(model_prefix), o)
             state['best_valid_error'] = valid_error
+            state['best_test_error'] = test_error
+        elif valid_loss is None:
+            serializers.save_npz('{}.model'.format(model_prefix), n)
+            serializers.save_npz('{}.state'.format(model_prefix), o)
             state['best_test_error'] = test_error
         if args.save_iter > 0 and (epoch + 1) % args.save_iter == 0:
             serializers.save_npz('{}_{}.model'.format(model_prefix, epoch + 1), n)

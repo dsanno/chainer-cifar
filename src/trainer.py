@@ -65,12 +65,12 @@ class CifarTrainer(object):
                 continue
             train_loss /= num
             train_acc /= num
-            valid_loss = 0
-            valid_acc = 0
+            valid_loss = None
+            valid_acc = None
             if valid_data is not None:
                 valid_loss, valid_acc = self.__evaluate(valid_data)
-            test_loss = 0
-            test_acc = 0
+            test_loss = None
+            test_acc = None
             test_time = 0
             if test_data is not None:
                 start_clock = time.clock()
