@@ -146,7 +146,7 @@ if __name__ == '__main__':
     optimizer.setup(cifar_net)
     if args.weight_decay > 0:
         optimizer.add_hook(chainer.optimizer.WeightDecay(args.weight_decay))
-    cifar_trainer = trainer.CifarTrainer(cifar_net, optimizer, args.iter, args.batch_size, args.gpu, lr_shape=args.lr_shape)
+    cifar_trainer = trainer.CifarTrainer(cifar_net, optimizer, args.iter, args.batch_size, args.gpu, lr_shape=args.lr_shape, lr_decay=lr_decay_iter)
     if args.prefix is None:
         model_prefix = '{}_{}'.format(args.model, args.optimizer)
     else:
