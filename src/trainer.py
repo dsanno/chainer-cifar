@@ -8,7 +8,6 @@ import chainer
 from chainer.dataset import convert
 from chainer import functions as F
 from chainer import cuda
-from chainer import Variable
 
 class CifarTrainer(object):
     def __init__(self, net, optimizer, epoch_num=100, batch_size=100, device_id=-1, lr_shape='multistep', lr_decay=[0]):
@@ -96,20 +95,22 @@ class CifarTrainer(object):
         total_loss = 0
         total_acc = 0
         num = 0
-        for batch in iterator:
-            x_batch, y_batch = convert.concat_examples(batch, self.device_id)
-            loss, acc = self.__forward(x_batch, y_batch, train=False)
-            total_loss += float(loss.data) * len(x_batch)
-            total_acc += float(acc.data) * len(x_batch)
-            num += len(x_batch)
+        with chainer.using_config('enable_backprop', False):
+            with chainer.using_config('train', False):
+                for batch in iterator:
+                    x_batch, y_batch = convert.concat_examples(batch, self.device_id)
+                    loss, acc = self.__forward(x_batch, y_batch)
+                    total_loss += float(loss.data) * len(x_batch)
+                    total_acc += float(acc.data) * len(x_batch)
+                    num += len(x_batch)
         iterator.finalize()
         return total_loss / num, total_acc / num
 
-    def __forward(self, batch_x, batch_t, train=True):
+    def __forward(self, batch_x, batch_t):
         xp = self.xp
-        x = Variable(xp.asarray(batch_x), volatile=not train)
-        t = Variable(xp.asarray(batch_t), volatile=not train)
-        y = self.net(x, train=train)
+        x = xp.asarray(batch_x)
+        t = xp.asarray(batch_t)
+        y = self.net(x)
         loss = F.softmax_cross_entropy(y, t)
         acc = F.accuracy(y, t)
         return loss, acc
