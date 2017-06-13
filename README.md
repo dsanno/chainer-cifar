@@ -3,7 +3,8 @@
 # Requirements
 
 * Python 2.7
-* [Chainer 1.9.0](http://chainer.org/)
+* [Chainer 2.0.0](http://chainer.org/)
+* [Cupy 1.0.0](http://docs.cupy.chainer.org/en/stable/)
 * [Pillow](https://pypi.python.org/pypi/Pillow/)
 * [matplotlib](http://matplotlib.org/)
 
