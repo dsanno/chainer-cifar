@@ -384,7 +384,7 @@ class VGGNoFC(chainer.Chain):
             bconv3_2=BatchConv2D(256, 256, 3, stride=1, pad=1),
             bconv3_3=BatchConv2D(256, 256, 3, stride=1, pad=1),
             bconv3_4=BatchConv2D(256, 256, 3, stride=1, pad=1),
-            fc=F.Linear(256, 10),
+            fc=L.Linear(256, 10),
         )
 
     def __call__(self, x):
@@ -422,7 +422,7 @@ class VGGWide(chainer.Chain):
             bconv3_6=BatchConv2D(512, 512, 3, stride=1, pad=1),
             bconv3_7=BatchConv2D(512, 512, 3, stride=1, pad=1),
             bconv3_8=BatchConv2D(512, 512, 3, stride=1, pad=1),
-            fc=F.Linear(512, 10),
+            fc=L.Linear(512, 10),
         )
 
     def __call__(self, x):
