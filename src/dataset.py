@@ -88,6 +88,7 @@ if __name__ == '__main__':
     # contrast normalization
     train_x = normalize_dataset(raw_train_x, mean, std)
     test_x = normalize_dataset(raw_test_x, mean, std)
+    images = {'train': train_x, 'test': test_x}
     with open(os.path.join(output_path, 'image_norm.pkl'), 'wb') as f:
         pickle.dump(images, f, pickle.HIGHEST_PROTOCOL)
     save_image(train_x, os.path.join(output_path, 'sample_norm.png'), normalize=True)
@@ -96,6 +97,7 @@ if __name__ == '__main__':
     zca, zca_mean = calc_zca(raw_train_x)
     train_x = np.dot(raw_train_x - zca_mean, zca.T)
     test_x = np.dot(raw_test_x - zca_mean, zca.T)
+    images = {'train': train_x, 'test': test_x}
     with open(os.path.join(output_path, 'image_zca.pkl'), 'wb') as f:
         pickle.dump(images, f, pickle.HIGHEST_PROTOCOL)
     save_image(train_x, os.path.join(output_path, 'sample_zca.png'), normalize=True)
@@ -106,6 +108,7 @@ if __name__ == '__main__':
     zca, zca_mean = calc_zca(train_x)
     train_x = np.dot(train_x - zca_mean, zca.T)
     test_x = np.dot(test_x - zca_mean, zca.T)
+    images = {'train': train_x, 'test': test_x}
     with open(os.path.join(output_path, 'image_norm_zca.pkl'), 'wb') as f:
         pickle.dump(images, f, pickle.HIGHEST_PROTOCOL)
     save_image(train_x, os.path.join(output_path, 'sample_norm_zca.png'), normalize=True)
