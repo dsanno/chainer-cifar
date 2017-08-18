@@ -33,6 +33,7 @@ class CifarDataset(chainer.datasets.TupleDataset):
         size = x.shape[2]
         offset = np.random.randint(-4, 5, size=(2,))
         mirror = np.random.randint(2)
+        remove = np.random.randint(2)
         top, left = offset
         left = max(0, left)
         top = max(0, top)
@@ -41,6 +42,19 @@ class CifarDataset(chainer.datasets.TupleDataset):
         if mirror > 0:
             x = x[:,:,::-1]
         image[:,size-bottom:size-top,size-right:size-left] = x[:,top:bottom,left:right]
+        if remove > 0:
+            while True:
+                s = np.random.uniform(0.02, 0.4) * size * size
+                r = np.random.uniform(-np.log(3.0), np.log(3.0))
+                r = np.exp(r)
+                w = int(np.sqrt(s / r))
+                h = int(np.sqrt(s * r))
+                left = np.random.randint(0, size)
+                top = np.random.randint(0, size)
+                if left + w < size and top + h < size:
+                    break
+            c = np.random.randint(-128, 128)
+            image[:, top:top + h, left:left + w] = c
         return image
 
 if __name__ == '__main__':
