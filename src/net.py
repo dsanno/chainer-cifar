@@ -582,7 +582,7 @@ class ResidualNet(chainer.Chain):
             else:
                 skip_ratio = 0
             links.append(('res{}'.format(len(links)), ResidualBlock(64, 64, swapout=swapout, skip_ratio=skip_ratio)))
-        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False, True)))
+        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False)))
         links.append(('fc{}'.format(len(links)), L.Linear(64, 10)))
 
         for name, f in links:
@@ -621,7 +621,7 @@ class IdentityMapping(chainer.Chain):
             else:
                 skip_ratio = 0
             links.append(('res{}'.format(len(links)), IdentityMappingBlock(64, 64, swapout=swapout, skip_ratio=skip_ratio, activation1=F.relu, activation2=F.relu)))
-        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False, True)))
+        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False)))
         links.append(('fc{}'.format(len(links)), L.Linear(64, 10)))
 
         for name, f in links:
@@ -674,7 +674,7 @@ class PyramidNet(chainer.Chain):
             links.append(('py{}'.format(len(links)), PyramidBlock(int(round(in_channel)), int(round(channel)),  skip_ratio=skip_ratio)))
         links.append(('bn{}'.format(len(links)), L.BatchNormalization(int(round(channel)))))
         links.append(('_relu{}'.format(len(links)), F.ReLU()))
-        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False, True)))
+        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False)))
         links.append(('fc{}'.format(len(links)), L.Linear(int(round(channel)), 10)))
 
         for name, f in links:
@@ -798,7 +798,7 @@ class ShakeShakeResidualNet(chainer.Chain):
         channel_size *= 2
         for i in six.moves.range(depth - 1):
             links.append(('res{}'.format(len(links)), ShakeShakeResidualBlock(channel_size, channel_size), True))
-        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False, True), False))
+        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False), False))
         links.append(('fc{}'.format(len(links)), L.Linear(channel_size, 10), False))
 
         for name, f, _with_train in links:
