@@ -133,11 +133,11 @@ class CReLUBlock(chainer.Chain):
 
 class ResidualBlock(chainer.Chain):
     def __init__(self, ch_in, ch_out, stride=1, swapout=False, skip_ratio=0, activation1=F.relu, activation2=F.relu):
-        w = math.sqrt(2)
+        initialW = chainer.initializers.HeNormal()
         super(ResidualBlock, self).__init__(
-            conv1=L.Convolution2D(ch_in, ch_out, 3, stride, 1, w),
+            conv1=L.Convolution2D(ch_in, ch_out, 3, stride, 1, initialW=initialW),
             bn1=L.BatchNormalization(ch_out),
-            conv2=L.Convolution2D(ch_out, ch_out, 3, 1, 1, w),
+            conv2=L.Convolution2D(ch_out, ch_out, 3, 1, 1, initialW=initialW),
             bn2=L.BatchNormalization(ch_out),
         )
         self.activation1 = activation1
@@ -187,11 +187,11 @@ class ResidualBlock(chainer.Chain):
 
 class IdentityMappingBlock(chainer.Chain):
     def __init__(self, ch_in, ch_out, stride=1, swapout=False, skip_ratio=0, activation1=F.relu, activation2=F.relu):
-        w = math.sqrt(2)
+        initialW = chainer.initializers.HeNormal()
         super(IdentityMappingBlock, self).__init__(
             bn1=L.BatchNormalization(ch_in),
-            conv1=L.Convolution2D(ch_in, ch_out, 3, stride, 1, w),
-            conv2=L.Convolution2D(ch_out, ch_out, 3, 1, 1, w),
+            conv1=L.Convolution2D(ch_in, ch_out, 3, stride, 1, initialW=initialW),
+            conv2=L.Convolution2D(ch_out, ch_out, 3, 1, 1, initialW=initialW),
             bn2=L.BatchNormalization(ch_out),
         )
         self.activation1 = activation1
