@@ -14,13 +14,13 @@ import time
 
 class CifarDataset(chainer.datasets.TupleDataset):
 
-    def __init__(self, x, y, augment=False):
+    def __init__(self, x, y, augment=None):
         super(CifarDataset, self).__init__(x, y)
         self._augment = augment
 
     def __getitem__(self, index):
         items = super(CifarDataset, self).__getitem__(index)
-        if not self._augment:
+        if self._augment is None:
             return items
         if isinstance(index, slice):
             return [(self._transform(x), y) for (x, y) in items]
@@ -31,9 +31,18 @@ class CifarDataset(chainer.datasets.TupleDataset):
     def _transform(self, x):
         image = np.zeros_like(x)
         size = x.shape[2]
-        offset = np.random.randint(-4, 5, size=(2,))
-        mirror = np.random.randint(2)
-        remove = np.random.randint(2)
+        if self._augment.get('crop', False):
+            offset = np.random.randint(-4, 5, size=(2,))
+        else:
+            offset = (0, 0)
+        if self._augment.get('mirror', False):
+            mirror = np.random.randint(2)
+        else:
+            mirror = 0
+        if self._augment.get('erase', False):
+            erase = np.random.randint(2)
+        else:
+            erase = 0
         top, left = offset
         left = max(0, left)
         top = max(0, top)
@@ -42,7 +51,7 @@ class CifarDataset(chainer.datasets.TupleDataset):
         if mirror > 0:
             x = x[:,:,::-1]
         image[:,size-bottom:size-top,size-right:size-left] = x[:,top:bottom,left:right]
-        if remove > 0:
+        if erase > 0:
             while True:
                 s = np.random.uniform(0.02, 0.4) * size * size
                 r = np.random.uniform(-np.log(3.0), np.log(3.0))
@@ -87,6 +96,8 @@ if __name__ == '__main__':
                         help='Initial learning rate for SGD')
     parser.add_argument('--alpha', type=float, default=0.001,
                         help='Initial alpha for Adam')
+    parser.add_argument('--augment', type=str, default='crop,mirror',
+                        help='Augmentation methods e.g. \'crop,mirror,erase\'')
     parser.add_argument('--no_valid_data', action='store_true',
                         help='Do not use validation data')
     parser.add_argument('--res_depth', type=int, default=18,
@@ -104,6 +115,8 @@ if __name__ == '__main__':
     np.random.seed(args.seed)
     log_file_path = '{}_log.csv'.format(args.prefix)
     lr_decay_iter = map(int, args.lr_decay_iter.split(','))
+    augment_methods = args.augment.split(',')
+    augmentation = {x: True for x in augment_methods}
 
     print('loading dataset...')
     with open(args.dataset, 'rb') as f:
@@ -119,13 +132,13 @@ if __name__ == '__main__':
         valid_index = index[-5000:]
         valid_x = images['train'][valid_index].reshape((-1, 3, 32, 32))
         valid_y = labels['train'][valid_index]
-        valid_data = CifarDataset(valid_x, valid_y, augment=False)
+        valid_data = CifarDataset(valid_x, valid_y, augment=None)
     train_x = images['train'][train_index].reshape((-1, 3, 32, 32))
     train_y = labels['train'][train_index]
-    train_data = CifarDataset(train_x, train_y, augment=True)
+    train_data = CifarDataset(train_x, train_y, augment=augmentation)
     test_x = images['test'].reshape((-1, 3, 32, 32))
     test_y = labels['test']
-    test_data = CifarDataset(test_x, test_y, augment=False)
+    test_data = CifarDataset(test_x, test_y, augment=None)
 
     print('start training')
     if args.model == 'cnn':
