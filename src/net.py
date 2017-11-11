@@ -750,7 +750,7 @@ class ShakeShakeResidualBlock(chainer.Chain):
         self.activation1 = activation1
         self.activation2 = activation2
 
-    def __call__(self, x, train=True):
+    def __call__(self, x):
         sh, sw = self.conv1_1.stride
         c_out, c_in, kh, kw = self.conv1_1.W.data.shape
         b, c, hh, ww = x.data.shape
@@ -769,14 +769,14 @@ class ShakeShakeResidualBlock(chainer.Chain):
             x = F.concat((p, x))
             if x.data.shape[2:] != shape_out[2:]:
                 x = F.average_pooling_2d(x, 1, 2)
-        h1 = self.bn1_1(self.conv1_1(h), test=not train)
-        h2 = self.bn2_1(self.conv2_1(h), test=not train)
+        h1 = self.bn1_1(self.conv1_1(h))
+        h2 = self.bn2_1(self.conv2_1(h))
         if self.activation1 is not None:
             h1 = self.activation1(h1)
             h2 = self.activation1(h2)
-        h1 = self.bn1_2(self.conv1_2(h1), test=not train)
-        h2 = self.bn2_2(self.conv2_2(h2), test=not train)
-        h = shake_shake(h1, h2, train=train) + x
+        h1 = self.bn1_2(self.conv1_2(h1))
+        h2 = self.bn2_2(self.conv2_2(h2))
+        h = shake_shake(h1, h2) + x
         if self.activation2 is not None:
             return self.activation2(h)
         else:
@@ -787,30 +787,30 @@ class ShakeShakeResidualNet(chainer.Chain):
     def __init__(self, depth=4, width=2):
         super(ShakeShakeResidualNet, self).__init__()
         channel_size = 16 * width
-        links = [('bconv1', BatchConv2D(3, channel_size, 3, 1, 1), True)]
+        links = [('bconv1', BatchConv2D(3, channel_size, 3, 1, 1))]
         for i in six.moves.range(depth):
-            links.append(('res{}'.format(len(links)), ShakeShakeResidualBlock(channel_size, channel_size), True))
-        links.append(('res{}'.format(len(links)), ShakeShakeResidualBlock(channel_size, channel_size * 2, stride=2), True))
+            links.append(('res{}'.format(len(links)), ShakeShakeResidualBlock(channel_size, channel_size)))
+        links.append(('res{}'.format(len(links)), ShakeShakeResidualBlock(channel_size, channel_size * 2, stride=2)))
         channel_size *= 2
         for i in six.moves.range(depth - 1):
-            links.append(('res{}'.format(len(links)), ShakeShakeResidualBlock(channel_size, channel_size), True))
-        links.append(('res{}'.format(len(links)), ShakeShakeResidualBlock(channel_size, channel_size * 2, stride=2), True))
+            links.append(('res{}'.format(len(links)), ShakeShakeResidualBlock(channel_size, channel_size)))
+        links.append(('res{}'.format(len(links)), ShakeShakeResidualBlock(channel_size, channel_size * 2, stride=2)))
         channel_size *= 2
         for i in six.moves.range(depth - 1):
-            links.append(('res{}'.format(len(links)), ShakeShakeResidualBlock(channel_size, channel_size), True))
-        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False), False))
-        links.append(('fc{}'.format(len(links)), L.Linear(channel_size, 10), False))
+            links.append(('res{}'.format(len(links)), ShakeShakeResidualBlock(channel_size, channel_size)))
+        links.append(('_apool{}'.format(len(links)), F.AveragePooling2D(8, 1, 0, False)))
+        links.append(('fc{}'.format(len(links)), L.Linear(channel_size, 10)))
 
-        for name, f, _with_train in links:
+        for name, f in links:
             if not name.startswith('_'):
                 self.add_link(*(name, f))
         self.layers = links
 
-    def __call__(self, x, train=True):
+    def __call__(self, x):
         h = x
-        for name, f, with_train in self.layers:
-            if with_train:
-                h = f(h, train=train)
+        for name, f in self.layers:
+            if hasattr(f, 'apply'):
+                h = f.apply((h,))[0]
             else:
                 h = f(h)
         return h
