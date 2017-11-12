@@ -728,8 +728,8 @@ class ShakeShake(function.Function):
         return gy[0] * weight, gy[0] * (1 - weight)
 
 
-def shake_shake(x1, x2, train=True):
-    if train:
+def shake_shake(x1, x2):
+    if chainer.config.train:
         return ShakeShake()(x1, x2)
     return 0.5 * (x1 + x2)
 
